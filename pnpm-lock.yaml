@@ -97,6 +97,9 @@ importers:
       svelte-check:
         specifier: ^4.6.0
         version: 4.7.4(picomatch@4.0.5)(svelte@5.56.8(@typescript-eslint/types@8.65.0))(typescript@6.0.3)
+      svelte-kit-sst:
+        specifier: ^2.43.5
+        version: 2.43.5
       tailwindcss:
         specifier: ^4.1.0
         version: 4.3.3
@@ -2337,6 +2340,9 @@ packages:
     peerDependenciesMeta:
       svelte:
         optional: true
+
+  svelte-kit-sst@2.43.5:
+    resolution: {integrity: sha512-tvWj/YiPCL3scFcHo/RSYZWtXIuX6g6Mib4MXmDw0JrOtZHzqOCG4kWstTbjnWH4i4XyLPPvxrgSkm35muj4uw==}
 
   svelte@5.56.8:
     resolution: {integrity: sha512-PY8LOw7xP6c8IOiVqdo0sbbZVYhXRSfklOQLAUyGBKqjTX0wx/z4l/9J+PmBpmlLnxzEb1NqltxQ5/wZme/Cmg==}
@@ -5073,6 +5079,8 @@ snapshots:
       semver: 7.8.5
     optionalDependencies:
       svelte: 5.56.8(@typescript-eslint/types@8.65.0)
+
+  svelte-kit-sst@2.43.5: {}
 
   svelte@5.56.8(@typescript-eslint/types@8.65.0):
     dependencies:
