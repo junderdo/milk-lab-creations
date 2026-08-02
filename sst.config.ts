@@ -9,7 +9,8 @@ export default $config({
       providers: {
         aws: {
           region: "us-west-2",
-          profile: "milklab-dev",
+          // CI authenticates via OIDC env credentials, not a local profile
+          profile: process.env.CI ? undefined : "milklab-dev",
         },
       },
     };
