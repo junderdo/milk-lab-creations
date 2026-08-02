@@ -1,0 +1,4 @@
+{
+  "extends": "@milklab/config/tsconfig/lambda.json",
+  "include": ["src", "test"]
+}

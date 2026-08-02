@@ -1,0 +1,22 @@
+{
+  "name": "milk-lab-creations",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "check": "turbo run check",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "dev": "sst dev",
+    "deploy": "sst deploy"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.0",
+    "prettier-plugin-svelte": "^4.1.1",
+    "sst": "^3.17.0",
+    "turbo": "^2.5.0"
+  }
+}

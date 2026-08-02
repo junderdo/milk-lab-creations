@@ -1,0 +1,28 @@
+{
+  "name": "@milklab/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "dev:server": "node --experimental-strip-types src/dev-server.ts"
+  },
+  "dependencies": {
+    "@trpc/server": "11.18.0",
+    "superjson": "2.2.6",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@milklab/config": "workspace:*",
+    "@types/aws-lambda": "^8.10.150",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.30.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}

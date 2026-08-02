@@ -1,5 +1,18 @@
 # Milk Lab Creations
 
+pnpm + Turborepo monorepo: `apps/api` (tRPC v11 on Lambda via SST v3), `apps/web` (SvelteKit 2 / Svelte 5 + Tailwind v4 + Tark UI), `packages/config` (shared tsconfig/eslint/prettier presets). Packages are scoped `@milklab/*`.
+
+## Development
+
+```bash
+pnpm install
+pnpm build / pnpm check / pnpm lint / pnpm test   # turbo pipelines
+pnpm --filter @milklab/api dev:server              # local tRPC server on :3001
+pnpm --filter @milklab/web dev                     # SvelteKit dev (talks to :3001 by default)
+```
+
+AWS deploys use profile `milklab-dev` (us-west-2); re-auth with `aws sso login --sso-session personal`. Tark UI components are copy-pasted from tarkui.com (`?framework=svelte`) into `apps/web/src/lib/components/` — rewrite their `lucide-svelte` imports to `@lucide/svelte`.
+
 ## Issue tracking (Trello)
 
 Issues for this project are tracked on the **Milk Lab Creations** Trello board using the `trello` CLI (npm package `trello-cli`, installed globally).

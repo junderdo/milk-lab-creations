@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+/* Tark UI components use class-based dark mode */
+@custom-variant dark (&:is(.dark *));

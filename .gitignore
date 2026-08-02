@@ -1,0 +1,9 @@
+node_modules/
+.turbo/
+.sst/
+.svelte-kit/
+dist/
+build/
+.env
+.env.*
+!.env.example
