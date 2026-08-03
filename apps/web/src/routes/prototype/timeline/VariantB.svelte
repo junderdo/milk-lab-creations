@@ -47,9 +47,14 @@
 		);
 	}
 
-	const popX = $derived(
-		proto.sel === null ? 0 : Math.min(Math.max(x(proto.kfs[proto.sel]!.timeMs) - 130, 4), w - 264),
-	);
+	// Sit beside the selected column (never on top of it): to the right of the
+	// column line, flipping to the left side when too close to the right edge.
+	const POP_W = 256;
+	const popX = $derived.by(() => {
+		if (proto.sel === null) return 0;
+		const cx = x(proto.kfs[proto.sel]!.timeMs);
+		return cx + 16 + POP_W <= w ? cx + 16 : Math.max(cx - 16 - POP_W, 4);
+	});
 </script>
 
 <div class="space-y-2">
