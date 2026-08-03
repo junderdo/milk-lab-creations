@@ -46,5 +46,5 @@ export async function fetchProfile(sub: string): Promise<Profile> {
   );
   const attrs = new Map(result.UserAttributes?.map((a) => [a.Name, a.Value]));
   const email = attrs.get("email") ?? "";
-  return { email, displayName: attrs.get("name") ?? email ?? "New user" };
+  return { email, displayName: attrs.get("name") ?? (email || "New user") };
 }

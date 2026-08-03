@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Context } from "./context.ts";
+import { withOccRetry } from "./occ.ts";
 import {
   derivedScalars,
   packWireFormat,
@@ -17,6 +18,7 @@ export const MAX_ANIMATIONS_PER_USER = 100;
 const DELETE_BATCH_SIZE = 200;
 
 const VISIBILITIES = ["private", "unlisted", "public"] as const;
+export type Visibility = (typeof VISIBILITIES)[number];
 
 const nameSchema = z.string().trim().min(1).max(100);
 const descriptionSchema = z.string().trim().max(1000);
@@ -45,6 +47,11 @@ function validatePayload(robotSlug: string, payload: unknown): AnimationPayload 
   return result.data;
 }
 
+const ownerRobotSelect = {
+  owner: { select: { id: true, displayName: true } },
+  robot: { select: { slug: true, name: true } },
+} as const;
+
 const animationListSelect = {
   id: true,
   name: true,
@@ -54,18 +61,14 @@ const animationListSelect = {
   keyframeCount: true,
   createdAt: true,
   updatedAt: true,
-  owner: { select: { id: true, displayName: true } },
-  robot: { select: { slug: true, name: true } },
+  ...ownerRobotSelect,
 } as const;
 
 /** Reads return NOT_FOUND (not FORBIDDEN) so private ids don't leak existence. */
 async function getVisibleAnimation(ctx: Context, id: string) {
   const animation = await ctx.db.animation.findUnique({
     where: { id },
-    include: {
-      owner: { select: { id: true, displayName: true } },
-      robot: { select: { slug: true, name: true } },
-    },
+    include: ownerRobotSelect,
   });
   if (!animation) throw new TRPCError({ code: "NOT_FOUND" });
   if (animation.visibility === "private" && animation.ownerId !== ctx.user?.sub) {
@@ -88,10 +91,12 @@ const usersRouter = router({
   updateDisplayName: authedProcedure
     .input(z.object({ displayName: nameSchema }))
     .mutation(({ ctx, input }) =>
-      ctx.db.user.update({
-        where: { id: ctx.dbUser.id },
-        data: { displayName: input.displayName },
-      }),
+      withOccRetry(() =>
+        ctx.db.user.update({
+          where: { id: ctx.dbUser.id },
+          data: { displayName: input.displayName },
+        }),
+      ),
     ),
 
   deleteAccount: authedProcedure.mutation(async ({ ctx }) => {
@@ -103,11 +108,13 @@ const usersRouter = router({
         take: DELETE_BATCH_SIZE,
       });
       if (batch.length === 0) break;
-      await ctx.db.animation.deleteMany({
-        where: { id: { in: batch.map((a) => a.id) } },
-      });
+      await withOccRetry(() =>
+        ctx.db.animation.deleteMany({
+          where: { id: { in: batch.map((a) => a.id) } },
+        }),
+      );
     }
-    await ctx.db.user.delete({ where: { id: ctx.dbUser.id } });
+    await withOccRetry(() => ctx.db.user.delete({ where: { id: ctx.dbUser.id } }));
     return { deleted: true };
   }),
 });
@@ -190,16 +197,18 @@ const animationsRouter = router({
         });
       }
 
-      return ctx.db.animation.create({
-        data: {
-          ownerId: ctx.dbUser.id,
-          robotId: robot.id,
-          name: input.name,
-          description: input.description,
-          payload,
-          ...derivedScalars(payload),
-        },
-      });
+      return withOccRetry(() =>
+        ctx.db.animation.create({
+          data: {
+            ownerId: ctx.dbUser.id,
+            robotId: robot.id,
+            name: input.name,
+            description: input.description,
+            payload,
+            ...derivedScalars(payload),
+          },
+        }),
+      );
     }),
 
   update: authedProcedure
@@ -217,35 +226,47 @@ const animationsRouter = router({
       let payloadData = {};
       if (input.payload !== undefined) {
         const robot = await ctx.db.robot.findUnique({ where: { id: existing.robotId } });
-        const payload = validatePayload(robot?.slug ?? "", input.payload);
+        if (!robot) {
+          // integrity lives in procedures (no FKs): a missing robot row for a
+          // stored animation is our invariant breach, not a caller mistake
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "animation references a robot that no longer exists",
+          });
+        }
+        const payload = validatePayload(robot.slug, input.payload);
         payloadData = { payload, ...derivedScalars(payload) };
       }
 
-      return ctx.db.animation.update({
-        where: { id: existing.id },
-        data: {
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...payloadData,
-        },
-      });
+      return withOccRetry(() =>
+        ctx.db.animation.update({
+          where: { id: existing.id },
+          data: {
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.description !== undefined ? { description: input.description } : {}),
+            ...payloadData,
+          },
+        }),
+      );
     }),
 
   setVisibility: authedProcedure
     .input(z.object({ id: z.string().uuid(), visibility: z.enum(VISIBILITIES) }))
     .mutation(async ({ ctx, input }) => {
       const existing = await getOwnedAnimation(ctx, ctx.dbUser.id, input.id);
-      return ctx.db.animation.update({
-        where: { id: existing.id },
-        data: { visibility: input.visibility },
-      });
+      return withOccRetry(() =>
+        ctx.db.animation.update({
+          where: { id: existing.id },
+          data: { visibility: input.visibility },
+        }),
+      );
     }),
 
   delete: authedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const existing = await getOwnedAnimation(ctx, ctx.dbUser.id, input.id);
-      await ctx.db.animation.delete({ where: { id: existing.id } });
+      await withOccRetry(() => ctx.db.animation.delete({ where: { id: existing.id } }));
       return { deleted: true };
     }),
 });

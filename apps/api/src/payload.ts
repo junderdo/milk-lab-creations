@@ -41,7 +41,7 @@ export function payloadSchemaFor(profile: RobotProfile) {
       (p) => p.keyframes.every((kf, i) => i === 0 || kf.timeMs >= p.keyframes[i - 1]!.timeMs),
       { message: "keyframe times must not move backwards" },
     )
-    .refine((p) => JSON.stringify(p).length <= MAX_PAYLOAD_BYTES, {
+    .refine((p) => new TextEncoder().encode(JSON.stringify(p)).length <= MAX_PAYLOAD_BYTES, {
       message: `payload exceeds ${MAX_PAYLOAD_BYTES} bytes`,
     });
 }

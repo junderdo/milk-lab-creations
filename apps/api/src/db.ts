@@ -27,9 +27,3 @@ export function getDb(): Db {
   }
   return db;
 }
-
-/** OCC-retrying transaction helper for multi-row writes. */
-export function getPool(): AuroraDSQLPool {
-  if (!pool) getDb();
-  return pool!;
-}

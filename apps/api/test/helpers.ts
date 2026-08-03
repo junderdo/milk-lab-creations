@@ -3,6 +3,7 @@
 // and the double's observable state, never on call shapes.
 import type { Context } from "../src/context.ts";
 import type { Db } from "../src/db.ts";
+import type { Visibility } from "../src/router.ts";
 
 export interface UserRow {
   id: string;
@@ -25,7 +26,7 @@ export interface AnimationRow {
   robotId: string;
   name: string;
   description: string | null;
-  visibility: string;
+  visibility: Visibility;
   payload: unknown;
   durationMs: number;
   keyframeCount: number;
@@ -124,7 +125,7 @@ export class FakeDb {
     },
     count: async ({ where }: { where: { ownerId: string } }) =>
       this.animations.filter((a) => a.ownerId === where.ownerId).length,
-    create: async ({ data }: { data: Omit<AnimationRow, "id" | "description" | "visibility" | "createdAt" | "updatedAt"> & { description?: string | null; visibility?: string } }) => {
+    create: async ({ data }: { data: Omit<AnimationRow, "id" | "description" | "visibility" | "createdAt" | "updatedAt"> & { description?: string | null; visibility?: Visibility } }) => {
       const row: AnimationRow = {
         id: uuid(),
         description: null,

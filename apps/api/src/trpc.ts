@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { Context } from "./context.ts";
+import { withOccRetry } from "./occ.ts";
 
 // transformer must match the httpBatchLink transformer on every client
 const t = initTRPC.context<Context>().create({ transformer: superjson });
@@ -15,18 +16,21 @@ export const publicProcedure = t.procedure;
 export const authedProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
 
-  let dbUser = await ctx.db.user.findUnique({ where: { id: ctx.user.sub } });
+  const sub = ctx.user.sub;
+  let dbUser = await ctx.db.user.findUnique({ where: { id: sub } });
   if (!dbUser) {
-    const profile = await ctx.fetchProfile(ctx.user.sub);
-    dbUser = await ctx.db.user.upsert({
-      where: { id: ctx.user.sub },
-      create: {
-        id: ctx.user.sub,
-        email: profile.email,
-        displayName: profile.displayName,
-      },
-      update: {},
-    });
+    const profile = await ctx.fetchProfile(sub);
+    dbUser = await withOccRetry(() =>
+      ctx.db.user.upsert({
+        where: { id: sub },
+        create: {
+          id: sub,
+          email: profile.email,
+          displayName: profile.displayName,
+        },
+        update: {},
+      }),
+    );
   }
 
   return next({ ctx: { ...ctx, dbUser } });

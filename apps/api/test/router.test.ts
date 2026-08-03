@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appRouter, MAX_ANIMATIONS_PER_USER } from "../src/router.ts";
+import { appRouter, MAX_ANIMATIONS_PER_USER, type Visibility } from "../src/router.ts";
 import { makeContext, uuid, validPayload } from "./helpers.ts";
 
 const SUB = "11111111-1111-4111-8111-111111111111";
@@ -11,7 +11,7 @@ function callerFor(ctx: ReturnType<typeof makeContext>) {
 
 async function seedAnimation(
   ctx: ReturnType<typeof makeContext>,
-  opts?: { visibility?: string; name?: string },
+  opts?: { visibility?: Visibility; name?: string },
 ) {
   const caller = callerFor(ctx);
   const created = await caller.animations.create({
@@ -22,7 +22,7 @@ async function seedAnimation(
   if (opts?.visibility && opts.visibility !== "private") {
     await caller.animations.setVisibility({
       id: created.id,
-      visibility: opts.visibility as "unlisted" | "public",
+      visibility: opts.visibility,
     });
   }
   return created;
@@ -136,6 +136,15 @@ describe("payload validation", () => {
         payload: validPayload(),
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("surfaces a vanished robot row on update as an internal error", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx);
+    ctx.fake.robots = [];
+    await expect(
+      callerFor(ctx).animations.update({ id: anim.id, payload: validPayload() }),
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
   });
 });
 

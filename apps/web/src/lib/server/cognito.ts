@@ -6,6 +6,7 @@ import type { Cookies } from "@sveltejs/kit";
 
 const REFRESH_COOKIE = "milklab_refresh";
 const ACCESS_COOKIE = "milklab_access";
+const STATE_COOKIE = "milklab_oauth_state";
 
 function domain() {
   return `https://${env.PUBLIC_COGNITO_DOMAIN}`;
@@ -15,15 +16,35 @@ function clientId() {
   return env.PUBLIC_COGNITO_CLIENT_ID ?? "";
 }
 
-export function authorizeUrl(origin: string): string {
+export function authorizeUrl(origin: string, state: string): string {
   const params = new URLSearchParams({
     client_id: clientId(),
     response_type: "code",
     scope: "openid email profile",
     redirect_uri: `${origin}/auth/callback`,
     identity_provider: "Google", // straight to Google; no Cognito hosted page
+    state,
   });
   return `${domain()}/oauth2/authorize?${params}`;
+}
+
+/** Login CSRF guard: the state minted at /auth/login must round-trip. */
+export function issueState(cookies: Cookies): string {
+  const state = crypto.randomUUID();
+  cookies.set(STATE_COOKIE, state, {
+    path: "/auth",
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 10 * 60, // the login redirect round-trip, not a session
+  });
+  return state;
+}
+
+export function consumeState(cookies: Cookies, state: string | null): boolean {
+  const expected = cookies.get(STATE_COOKIE);
+  cookies.delete(STATE_COOKIE, { path: "/auth" });
+  return Boolean(expected) && state === expected;
 }
 
 export function logoutUrl(origin: string): string {
