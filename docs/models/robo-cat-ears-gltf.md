@@ -75,5 +75,5 @@ The build script recovers each shaft axis by cylinder-fitting those case ends
   and latitude (±109.2, ~15.0, 43.6), then shifted by manual corrections
   dialed in visually against the physical robot in the Threlte preview
   prototype (`AZ_PIVOT_CORRECTION_MM` / `LAT_PIVOT_CORRECTION_MM` in the
-  build script): azimuth +9.0 back, +12.5 up; latitude −13.0 forward-along-ear,
-  +1.0 up. Final: azimuth (±109.2, ~11.9, 56.1); latitude (±109.2, ~2.0, 44.6).
+  build script): azimuth (±5.5, +13.0, +23.0); latitude (0, −11.5, +1.0).
+  Final: azimuth (±114.7, ~15.7, 66.5); latitude (±109.2, ~3.3, 44.5).

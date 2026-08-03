@@ -43,11 +43,11 @@ TARGET_FACES = {"headband": 9000, "servos": 12000, "ear": 11000}
 
 # Manual pivot corrections dialed in visually against the physical robot in
 # the Threlte preview prototype (left-side values, CAD mm Z-up; x mirrors per
-# side): servo assembly pivots further back+up, ear pivots further up its
-# length. glTF-space equivalents: azimuth (0, +12.5, -9.0), latitude
-# (0, +1.0, +13.0) mm.
-AZ_PIVOT_CORRECTION_MM = np.array([0.0, 9.0, 12.5])
-LAT_PIVOT_CORRECTION_MM = np.array([0.0, -13.0, 1.0])
+# side): servo assembly pivots further back+up+outboard, ear pivots further
+# up its length. Sum of two tuning rounds; glTF-space equivalents:
+# azimuth (+5.5, +23.0, -13.0), latitude (0, +1.0, +11.5) mm.
+AZ_PIVOT_CORRECTION_MM = np.array([5.5, 13.0, 23.0])
+LAT_PIVOT_CORRECTION_MM = np.array([0.0, -11.5, 1.0])
 
 
 def load(name):
