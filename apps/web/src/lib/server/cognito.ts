@@ -62,11 +62,18 @@ interface TokenResponse {
 }
 
 async function tokenRequest(body: Record<string, string>): Promise<TokenResponse | null> {
-  const response = await fetch(`${domain()}/oauth2/token`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId(), ...body }),
-  });
+  // Token endpoint unreachable (offline dev, missing env) must degrade to
+  // logged-out, not take down every SSR page with an uncaught fetch error.
+  let response: Response;
+  try {
+    response = await fetch(`${domain()}/oauth2/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId(), ...body }),
+    });
+  } catch {
+    return null;
+  }
   if (!response.ok) return null;
   return (await response.json()) as TokenResponse;
 }
