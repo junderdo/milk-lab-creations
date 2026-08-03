@@ -51,3 +51,6 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-west-2
       - run: pnpm sst deploy --stage production
+      # migrations run after deploy so the cluster exists even on the first run;
+      # sst shell injects the linked Db resource — no connection strings in CI
+      - run: pnpm sst shell --stage production -- pnpm --filter @milklab/api db:migrate
