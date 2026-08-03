@@ -12,8 +12,9 @@ Rig (matches firmware channel map in robo-cat-ears/main/servo.h):
 Each articulation node carries glTF extras (three.js userData):
   { "channel": n, "axis": [x,y,z], "neutralDeg": 90 }
 axis is the rotation axis in the node's parent space (unit vector, glTF Y-up).
-Runtime pose: quaternion = axisAngle(axis, sign * radians(angleDeg - 90)).
-Rotation signs must be validated visually (prototype ticket) — firmware semantics:
+Runtime pose: quaternion = axisAngle(axis, radians(angleDeg - 90)) — the axis
+directions already encode the rotation sense validated against the physical
+robot (azimuth axes point down; no runtime sign needed). Firmware semantics:
   ch0: 40 = left ear swivels leftward/outboard   ch2: 140 = right ear rightward/outboard
   ch1: 80 = left ear tilts up                    ch3: 100 = right ear tilts up
 
@@ -132,6 +133,9 @@ def main():
         cand = [(-d, p, m) if d[2] < 0 else (d, p, m) for d, p, m in cand]
         cand.sort(key=lambda c: -c[0][0] * sx)
         (az_dir, az_pt, _), (lat_dir, lat_pt, _) = cand
+        # Validated against the physical robot (prototype ticket): both azimuth
+        # rotations run opposite the up-normalized shaft direction.
+        az_dir = -az_dir
         az_pivot, lat_pivot = intersect_in_xz(az_dir, az_pt, lat_dir, lat_pt)
         mirror = np.array([sx, 1.0, 1.0])
         az_pivot = az_pivot + AZ_PIVOT_CORRECTION_MM * mirror

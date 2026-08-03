@@ -41,7 +41,7 @@ Each `*_Azimuth` / `*_Latitude` node carries glTF `extras` (surfaced by three.js
 as `object.userData`):
 
 ```json
-{ "channel": 0, "axis": [0.625923, 0.779884, -0.0], "neutralDeg": 90 }
+{ "channel": 0, "axis": [-0.625923, -0.779884, 0.0], "neutralDeg": 90 }
 ```
 
 `axis` is the rotation axis as a unit vector in the node's **parent** space
@@ -50,16 +50,15 @@ as `object.userData`):
 ```ts
 node.quaternion.setFromAxisAngle(
   new Vector3(...node.userData.axis),
-  THREE.MathUtils.degToRad(angleDeg - node.userData.neutralDeg) * sign,
+  THREE.MathUtils.degToRad(angleDeg - node.userData.neutralDeg),
 );
 ```
 
-**`sign` is unvalidated (+1 as built).** The rig geometry is verified (mirrored
-poses render correctly), but whether angle > 90 maps to the same physical
-direction as the firmware needs one visual check against the real robot —
-scheduled for the "Prototype: Threlte preview driven by the interpolator"
-ticket. If a direction is inverted, flip that node's sign in the viewer (or
-negate `axis` in the build script and rebuild).
+**Rotation signs are validated against the physical robot** ("Prototype: Threlte
+preview driven by the interpolator" ticket): the azimuth axes are negated from
+the up-normalized shaft direction (they point down in glTF space), the latitude
+axes were correct as fitted. The `axis` vectors fully encode the rotation sense
+— apply the axis-angle pose as-is, no per-node sign factor.
 
 ## Provenance of the pivots
 
