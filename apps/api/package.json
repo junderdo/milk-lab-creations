@@ -12,7 +12,9 @@
     "test": "prisma generate && vitest run",
     "dev:server": "node --experimental-strip-types src/dev-server.ts",
     "generate": "prisma generate",
-    "db:migrate": "node --experimental-strip-types scripts/migrate.ts"
+    "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
+    "db:migrate:new": "aurora-dsql-prisma migrate prisma/schema.prisma -o",
+    "db:migrate:lint": "aurora-dsql-prisma lint"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1101.0",

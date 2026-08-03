@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { packWireFormat, type AnimationPayload } from "../src/payload.ts";
 import { appRouter, MAX_ANIMATIONS_PER_USER, type Visibility } from "../src/router.ts";
-import { makeContext, uuid, validPayload } from "./helpers.ts";
+import { makeContext, ROBO_CAT_EARS, uuid, validPayload } from "./helpers.ts";
 
 const SUB = "11111111-1111-4111-8111-111111111111";
 const OTHER_SUB = "22222222-2222-4222-8222-222222222222";
@@ -217,6 +218,72 @@ describe("visibility", () => {
     expect(items.map((i: { id: string }) => i.id)).toEqual([pub.id]);
   });
 
+  it("filters the gallery by robot slug", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const caller = callerFor(ctx);
+    await caller.users.me(); // provision so gallery rows carry an owner
+    const catEars = await seedAnimation(ctx, { name: "Ears", visibility: "public" });
+
+    const otherRobot = {
+      id: uuid(),
+      slug: "robo-dog-tail",
+      name: "Robo Dog Tail",
+      createdAt: new Date("2026-01-02"),
+    };
+    ctx.fake.robots.push(otherRobot);
+    ctx.fake.animations.push({
+      id: uuid(),
+      ownerId: SUB,
+      robotId: otherRobot.id,
+      name: "Tail",
+      description: null,
+      visibility: "public",
+      payload: validPayload(),
+      durationMs: 500,
+      keyframeCount: 2,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    const filtered = await anon.animations.gallery({ robotSlug: "robo-cat-ears" });
+    expect(filtered.items.map((i: { id: string }) => i.id)).toEqual([catEars.id]);
+    const all = await anon.animations.gallery();
+    expect(all.items).toHaveLength(2);
+  });
+
+  it("pages the gallery with a cursor", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await callerFor(ctx).users.me();
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const id = uuid();
+      ids.push(id);
+      ctx.fake.animations.push({
+        id,
+        ownerId: SUB,
+        robotId: ROBO_CAT_EARS.id,
+        name: `page${i}`,
+        description: null,
+        visibility: "public",
+        payload: validPayload(),
+        durationMs: 500,
+        keyframeCount: 2,
+        createdAt: new Date(2026, 0, 1 + i), // distinct: newest last-created
+        updatedAt: new Date(2026, 0, 1 + i),
+      });
+    }
+
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    const first = await anon.animations.gallery({ limit: 2 });
+    expect(first.items.map((i: { id: string }) => i.id)).toEqual([ids[2], ids[1]]);
+    expect(first.nextCursor).toBe(ids[1]);
+
+    const second = await anon.animations.gallery({ limit: 2, cursor: first.nextCursor });
+    expect(second.items.map((i: { id: string }) => i.id)).toEqual([ids[0]]);
+    expect(second.nextCursor).toBeUndefined();
+  });
+
   it("revocation: flipping public back to private kills anonymous access", async () => {
     const ctx = makeContext({ sub: SUB });
     const anim = await seedAnimation(ctx, { visibility: "public" });
@@ -225,6 +292,40 @@ describe("visibility", () => {
     await expect(anon.animations.byId({ id: anim.id })).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
+  });
+});
+
+describe("robots", () => {
+  it("lists the robot catalog anonymously", async () => {
+    const robots = await callerFor(makeContext()).robots.list();
+    expect(robots).toEqual([ROBO_CAT_EARS]);
+  });
+});
+
+describe("wire format", () => {
+  it("serves the packed wire format for viewable animations", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx, { visibility: "unlisted" });
+
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    const { wireBase64 } = await anon.animations.wireById({ id: anim.id });
+
+    const bytes = Uint8Array.from(Buffer.from(wireBase64, "base64"));
+    expect(bytes).toEqual(packWireFormat(validPayload() as AnimationPayload));
+    expect(bytes[0]).toBe(2); // keyframe count leads the 1 + n*12 byte layout
+    expect(bytes).toHaveLength(1 + 2 * 12);
+  });
+
+  it("gates the wire format behind the same visibility rules", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx); // private
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    await expect(anon.animations.wireById({ id: anim.id })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    await expect(callerFor(ctx).animations.wireById({ id: anim.id })).resolves.toHaveProperty(
+      "wireBase64",
+    );
   });
 });
 

@@ -147,7 +147,13 @@ const animationsRouter = router({
         take: input.limit + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
       });
-      const nextCursor = items.length > input.limit ? items.pop()!.id : undefined;
+      // cursor + skip:1 resumes *after* the cursor row, so it must be the last
+      // row we return — anchoring on the popped row would drop it entirely
+      let nextCursor: string | undefined;
+      if (items.length > input.limit) {
+        items.pop();
+        nextCursor = items[items.length - 1]!.id;
+      }
       return { items, nextCursor };
     }),
 

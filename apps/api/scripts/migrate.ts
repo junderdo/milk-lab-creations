@@ -1,8 +1,9 @@
 // Applies committed migrations to the linked DSQL cluster.
 // Runs under `sst shell` (CI) or an sst dev DevCommand — both inject the
 // linked Db resource. New migrations are generated with
-// `aurora-dsql-prisma migrate`, never by hand-running `prisma migrate dev`
-// (DSQL has no advisory locks or shadow databases).
+// `pnpm db:migrate:new prisma/migrations/<n>_<name>/migration.sql` (pass
+// --from-url for an incremental diff), never by hand-running
+// `prisma migrate dev` (DSQL has no advisory locks or shadow databases).
 import { spawnSync } from "node:child_process";
 import { DsqlSigner } from "@aws-sdk/dsql-signer";
 import { Resource } from "sst";
