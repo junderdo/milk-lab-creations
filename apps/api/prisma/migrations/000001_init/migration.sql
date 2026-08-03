@@ -1,5 +1,8 @@
--- DSQL-dialect migration: one DDL statement per transaction, async indexes
--- outside transaction blocks, no FK constraints (relationMode = "prisma").
+-- DSQL-dialect migration: one DDL statement per explicit BEGIN/COMMIT, no FK
+-- constraints (relationMode = "prisma"). Every statement — including CREATE
+-- INDEX ASYNC — needs its own transaction block: prisma migrate deploy sends
+-- the script as one batch, and statements outside explicit blocks share the
+-- batch's implicit transaction, which DSQL rejects for consecutive DDL.
 
 BEGIN;
 CREATE TABLE "users" (
@@ -39,8 +42,14 @@ CREATE TABLE "animations" (
 );
 COMMIT;
 
+BEGIN;
 CREATE UNIQUE INDEX ASYNC "robots_slug_key" ON "robots"("slug");
+COMMIT;
 
+BEGIN;
 CREATE INDEX ASYNC "animations_owner_id_created_at_idx" ON "animations"("owner_id", "created_at");
+COMMIT;
 
+BEGIN;
 CREATE INDEX ASYNC "animations_visibility_created_at_idx" ON "animations"("visibility", "created_at");
+COMMIT;

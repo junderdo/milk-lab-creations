@@ -10,7 +10,7 @@
     "check": "turbo run check",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "dev": "sst dev",
+    "dev": "AWS_PROFILE=milklab-dev sst dev",
     "deploy": "sst deploy"
   },
   "devDependencies": {

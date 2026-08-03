@@ -7,7 +7,8 @@ pnpm + Turborepo monorepo: `apps/api` (tRPC v11 on Lambda via SST v3), `apps/web
 ```bash
 pnpm install
 pnpm build / pnpm check / pnpm lint / pnpm test   # turbo pipelines
-pnpm --filter @milklab/api dev:server              # local tRPC server on :3001
+pnpm dev                                           # sst dev: personal stage (DSQL+Cognito), migrations, API :3001, web :5173
+pnpm --filter @milklab/api dev:server              # local tRPC server on :3001 (needs AWS_PROFILE=milklab-dev for DSQL)
 pnpm --filter @milklab/web dev                     # SvelteKit dev (talks to :3001 by default)
 ```
 
