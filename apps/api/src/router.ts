@@ -143,7 +143,9 @@ const animationsRouter = router({
           ...(input.robotSlug ? { robot: { slug: input.robotSlug } } : {}),
         },
         select: animationListSelect,
-        orderBy: { createdAt: "desc" },
+        // id tiebreaker: createdAt ties would otherwise make cursor resumption
+        // nondeterministic (rows skipped or repeated across pages)
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: input.limit + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
       });

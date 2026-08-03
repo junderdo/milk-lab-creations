@@ -216,6 +216,15 @@ describe("visibility", () => {
 
     const { items } = await callerFor(makeContext({ db: ctx.fake })).animations.gallery();
     expect(items.map((i: { id: string }) => i.id)).toEqual([pub.id]);
+    // browsing is payload-free: entries carry metadata only
+    expect(items[0]).not.toHaveProperty("payload");
+    expect(items[0]).toMatchObject({
+      name: "Public one",
+      durationMs: 500,
+      keyframeCount: 2,
+      owner: { displayName: "Jeff" },
+      robot: { slug: "robo-cat-ears" },
+    });
   });
 
   it("filters the gallery by robot slug", async () => {

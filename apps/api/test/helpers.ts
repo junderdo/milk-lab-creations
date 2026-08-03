@@ -52,6 +52,16 @@ export class FakeDb {
   robots: RobotRow[] = [ROBO_CAT_EARS];
   animations: AnimationRow[] = [];
 
+  /** Mirrors Prisma `select`: only requested fields come back off the wire. */
+  private applySelect(view: Record<string, unknown>, select?: unknown) {
+    if (!select) return view;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(select as Record<string, unknown>)) {
+      if (key in view) out[key] = view[key];
+    }
+    return out;
+  }
+
   private robotView(row: AnimationRow) {
     const robot = this.robots.find((r) => r.id === row.robotId);
     const owner = this.users.find((u) => u.id === row.ownerId);
@@ -115,13 +125,16 @@ export class FakeDb {
         }
         return true;
       });
-      rows = [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      rows = [...rows].sort(
+        (a, b) =>
+          b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+      );
       if (args.cursor) {
         const idx = rows.findIndex((r) => r.id === args.cursor!.id);
         rows = idx === -1 ? [] : rows.slice(idx + (args.skip ?? 0));
       }
       if (args.take !== undefined) rows = rows.slice(0, args.take);
-      return rows.map((r) => this.robotView(r));
+      return rows.map((r) => this.applySelect(this.robotView(r), args.select));
     },
     count: async ({ where }: { where: { ownerId: string } }) =>
       this.animations.filter((a) => a.ownerId === where.ownerId).length,
