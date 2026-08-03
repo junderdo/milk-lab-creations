@@ -1,7 +1,7 @@
 <!-- PROTOTYPE — Threlte scene: loads the rigged glb and drives its pivot nodes
      from the firmware-faithful interpolator every frame. -->
 <script lang="ts">
-	import { T, useTask } from '@threlte/core';
+	import { T, useTask, useThrelte } from '@threlte/core';
 	import { OrbitControls, useGltf } from '@threlte/extras';
 	import * as THREE from 'three';
 	import { sample, durationMs } from './interpolator';
@@ -11,6 +11,26 @@
 	let { pb }: { pb: PlaybackState } = $props();
 
 	const gltf = useGltf('/models/robo-cat-ears.glb');
+
+	// Cap the render loop at 120fps: renderMode="manual" on the Canvas, and we
+	// only advance() when enough time has passed (240Hz displays would
+	// otherwise run the loop at full display rate for no visible gain).
+	const CAP_FPS = 120;
+	const { advance } = useThrelte();
+	$effect(() => {
+		let raf: number;
+		let last = 0;
+		const loop = (now: number) => {
+			raf = requestAnimationFrame(loop);
+			// small tolerance so timing jitter doesn't halve the effective rate
+			if (now - last >= 1000 / CAP_FPS - 0.5) {
+				last = now;
+				advance();
+			}
+		};
+		raf = requestAnimationFrame(loop);
+		return () => cancelAnimationFrame(raf);
+	});
 
 	// channel -> { node, axis } resolved once from glTF extras (three.js userData)
 	type Pivot = { node: THREE.Object3D; axis: THREE.Vector3; name: NodeName };

@@ -8,7 +8,7 @@
 </script>
 
 <div class="h-full w-full">
-	<Canvas>
+	<Canvas renderMode="manual">
 		<Scene {pb} />
 	</Canvas>
 </div>
