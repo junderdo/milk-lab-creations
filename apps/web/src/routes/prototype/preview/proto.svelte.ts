@@ -22,6 +22,15 @@ export class PlaybackState {
 		EarR_Latitude: 1
 	});
 
+	/**
+	 * Pivot-point nudges in mm, glTF space (x = outboard→inboard for the LEFT
+	 * side, y = up, z = front→back), mirrored in x for the right side. Lets the
+	 * human dial in pivot corrections live; final values get baked into the
+	 * glb build script.
+	 */
+	azimuthOffset = $state({ x: 0, y: 0, z: 0 });
+	latitudeOffset = $state({ x: 0, y: 0, z: 0 });
+
 	// written by the scene every frame
 	angles = $state<[number, number, number, number]>([90, 90, 90, 90]);
 	fps = $state(0);

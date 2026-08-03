@@ -34,8 +34,10 @@
 
 	// channel -> { node, axis } resolved once from glTF extras (three.js userData)
 	type Pivot = { node: THREE.Object3D; axis: THREE.Vector3; name: NodeName };
-	let pivots: Pivot[] | null = null;
+	let pivots = $state.raw<Pivot[] | null>(null);
 	let center = $state<[number, number, number]>([0, 0.05, 0]);
+	// rest-pose positions of pivot nodes and their children, for pivot nudging
+	const basePos = new Map<THREE.Object3D, THREE.Vector3>();
 
 	$effect(() => {
 		if (!$gltf || pivots) return;
@@ -49,6 +51,11 @@
 				name
 			};
 		}
+		for (const p of found) {
+			if (!p) continue;
+			basePos.set(p.node, p.node.position.clone());
+			for (const c of p.node.children) basePos.set(c, c.position.clone());
+		}
 		pivots = found;
 		const box = new THREE.Box3().setFromObject($gltf.scene);
 		const c = box.getCenter(new THREE.Vector3());
@@ -57,6 +64,31 @@
 			found.filter(Boolean).length === 4
 				? `loaded — 4 pivot nodes resolved`
 				: `PROBLEM: only ${found.filter(Boolean).length}/4 pivot nodes found`;
+	});
+
+	// Pivot nudging: move a pivot node's origin by the offset while keeping the
+	// rest pose — children get the inverse offset. Right side mirrors x.
+	// EarL/R_Latitude is both a pivot (own offset) and a child of the azimuth
+	// pivot (inverse azimuth offset), so deltas accumulate before applying.
+	$effect(() => {
+		if (!pivots) return;
+		const mm = { azimuth: pb.azimuthOffset, latitude: pb.latitudeOffset };
+		const deltas = new Map<THREE.Object3D, THREE.Vector3>();
+		const bump = (o: THREE.Object3D, v: THREE.Vector3) =>
+			(deltas.get(o) ?? deltas.set(o, new THREE.Vector3()).get(o)!).add(v);
+		for (const p of pivots) {
+			if (!p) continue;
+			const src = p.name.includes('Azimuth') ? mm.azimuth : mm.latitude;
+			const mirror = p.name.startsWith('EarR') ? -1 : 1;
+			const d = new THREE.Vector3((src.x * mirror) / 1000, src.y / 1000, src.z / 1000);
+			bump(p.node, d);
+			for (const c of p.node.children) bump(c, d.clone().negate());
+		}
+		for (const [obj, base] of basePos) {
+			const d = deltas.get(obj);
+			if (d) obj.position.copy(base).add(d);
+			else obj.position.copy(base);
+		}
 	});
 
 	// fps instrumentation: EMA + worst frame over a rolling 1s window

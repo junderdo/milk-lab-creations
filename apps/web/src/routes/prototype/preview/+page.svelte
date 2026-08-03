@@ -106,6 +106,39 @@
 				{/each}
 			</div>
 
+			<!-- pivot nudges: dial in, then bake values into the glb build script -->
+			<div class="space-y-1">
+				<div class="text-zinc-500">
+					Pivot nudge, mm (left side; right mirrors x) — x in/outboard · y up/down · z front/back
+				</div>
+				{#each [{ label: 'azimuth (servo assembly)', o: pb.azimuthOffset }, { label: 'latitude (ear)', o: pb.latitudeOffset }] as { label, o } (label)}
+					<div class="flex items-center gap-2 font-mono">
+						<span class="w-40 text-zinc-400">{label}</span>
+						{#each ['x', 'y', 'z'] as ax (ax)}
+							<label class="flex items-center gap-1">
+								{ax}
+								<input
+									type="range"
+									class="w-20"
+									min="-30"
+									max="30"
+									step="0.5"
+									bind:value={o[ax as 'x' | 'y' | 'z']}
+								/>
+								<span class="w-10 text-right">{o[ax as 'x' | 'y' | 'z'].toFixed(1)}</span>
+							</label>
+						{/each}
+					</div>
+				{/each}
+				<button
+					class="rounded bg-zinc-800 px-2 py-0.5"
+					onclick={() => {
+						pb.azimuthOffset = { x: 0, y: 0, z: 0 };
+						pb.latitudeOffset = { x: 0, y: 0, z: 0 };
+					}}>reset pivots</button
+				>
+			</div>
+
 			<!-- sign flips: THE open question from the glb task -->
 			<div class="space-y-1">
 				<div class="text-zinc-500">Rotation sign (unvalidated — flip if inverted vs. robot)</div>
