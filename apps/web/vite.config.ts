@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	// three ships ESM that Vite must process during SSR (Threlte guidance)
+	ssr: { noExternal: ['three'] },
 	plugins: [
 		tailwindcss(),
 		sveltekit({
