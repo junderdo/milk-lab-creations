@@ -34,6 +34,21 @@ export const PAYLOADS: Record<string, { label: string; payload: AnimationPayload
 			]
 		}
 	},
+	timid: {
+		label: 'Timid — watch demo animation (slot 0)',
+		// Transcribed from makeTimidAnimation() in the robo-cat-ears-watch app:
+		// fold back and outward, nervous twitch with an 800ms halfway hold,
+		// elastic spring back to centre.
+		payload: {
+			schemaVersion: 1,
+			keyframes: [
+				{ timeMs: 0, angles: [90, 90, 90, 90], easeInType: 0, easeOutType: 1, easeInMs: 0, easeOutMs: 200 },
+				{ timeMs: 900, angles: [40, 140, 140, 40], easeInType: 1, easeOutType: 1, easeInMs: 700, easeOutMs: 200 },
+				{ timeMs: 2200, angles: [50, 135, 130, 45], easeInType: 2, easeOutType: 1, easeInMs: 300, easeOutMs: 300 },
+				{ timeMs: 3400, angles: [90, 90, 90, 90], easeInType: 3, easeOutType: 0, easeInMs: 800, easeOutMs: 0 }
+			]
+		}
+	},
 	elastic: {
 		label: 'Elastic stress — overshoot clamping near limits',
 		payload: {
