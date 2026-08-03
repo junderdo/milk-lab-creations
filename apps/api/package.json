@@ -7,21 +7,33 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "prisma generate && tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run",
-    "dev:server": "node --experimental-strip-types src/dev-server.ts"
+    "test": "prisma generate && vitest run",
+    "dev:server": "node --experimental-strip-types src/dev-server.ts",
+    "generate": "prisma generate",
+    "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
+    "db:migrate:new": "aurora-dsql-prisma migrate prisma/schema.prisma -o",
+    "db:migrate:lint": "aurora-dsql-prisma lint"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1101.0",
+    "@aws/aurora-dsql-node-postgres-connector": "^0.1.9",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
     "@trpc/server": "11.18.0",
+    "aws-jwt-verify": "^5.2.1",
     "superjson": "2.2.6",
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@aws-sdk/dsql-signer": "^3.1101.0",
+    "@aws/aurora-dsql-prisma-tools": "^0.1.2",
     "@milklab/config": "workspace:*",
     "@types/aws-lambda": "^8.10.150",
     "@types/node": "^24.0.0",
     "eslint": "^9.30.0",
+    "prisma": "^7.9.1",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0"
   }

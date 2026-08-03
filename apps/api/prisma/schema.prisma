@@ -1,0 +1,55 @@
+// Data-layer schema per the wayfinder map (see the spec card).
+// DSQL rules: no FK constraints (relationMode = "prisma"), UUID PKs,
+// async index creation handled in the migration SQL.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider     = "postgresql"
+  relationMode = "prisma"
+}
+
+model User {
+  id          String      @id @db.Uuid // Cognito sub, JIT-upserted
+  email       String
+  displayName String      @map("display_name")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz()
+  animations  Animation[]
+
+  @@map("users")
+}
+
+model Robot {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug       String      @unique
+  name       String
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  animations Animation[]
+
+  @@map("robots")
+}
+
+model Animation {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId       String   @map("owner_id") @db.Uuid
+  robotId       String   @map("robot_id") @db.Uuid
+  name          String
+  description   String?
+  visibility    String   @default("private") // private | unlisted | public
+  payload       Json // { schemaVersion, keyframes } — never indexed
+  durationMs    Int      @map("duration_ms") // derived from payload on write
+  keyframeCount Int      @map("keyframe_count") // derived from payload on write
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  owner User  @relation(fields: [ownerId], references: [id])
+  robot Robot @relation(fields: [robotId], references: [id])
+
+  @@index([ownerId, createdAt]) // my-animations
+  @@index([visibility, createdAt]) // gallery
+  @@map("animations")
+}

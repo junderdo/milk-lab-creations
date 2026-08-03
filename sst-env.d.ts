@@ -10,17 +10,38 @@ declare module "sst" {
       "type": "sst.aws.ApiGatewayV2"
       "url": string
     }
+    "Db": {
+      "endpoint": string
+      "region": string
+      "type": "sst.aws.Dsql"
+    }
+    "GoogleClientId": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "GoogleClientSecret": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
     "TrpcFn": {
       "name": string
       "type": "sst.aws.Function"
+    }
+    "UserPool": {
+      "id": string
+      "type": "sst.aws.CognitoUserPool"
     }
     "Web": {
       "type": "sst.aws.SvelteKit"
       "url": string
     }
+    "WebClient": {
+      "id": string
+      "secret": string
+      "type": "sst.aws.CognitoUserPoolClient"
+    }
   }
 }
-/// <reference path="sst-env.d.ts" />
 
 import "sst"
 export {}

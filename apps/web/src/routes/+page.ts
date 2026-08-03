@@ -1,7 +1,8 @@
-import type { PageLoad } from "./$types";
 import { trpc } from "$lib/trpc";
+import type { PageLoad } from "./$types";
 
 export const load: PageLoad = async ({ fetch }) => {
-  const greeting = await trpc(fetch).greet.query({ name: "world" });
-  return { greeting };
+  // public gallery: no auth needed
+  const gallery = await trpc(fetch).animations.gallery.query({ limit: 50 });
+  return { gallery };
 };
