@@ -16,7 +16,12 @@ const token = await signer.getDbConnectAdminAuthToken();
 
 const url = `postgresql://admin:${encodeURIComponent(token)}@${hostname}:5432/postgres?sslmode=require`;
 
-const result = spawnSync("npx", ["prisma", "migrate", "deploy"], {
+// default is `migrate deploy`; pass alternate prisma args for recovery,
+// e.g. `db:migrate migrate resolve --rolled-back <name>`
+const prismaArgs =
+  process.argv.length > 2 ? process.argv.slice(2) : ["migrate", "deploy"];
+
+const result = spawnSync("npx", ["prisma", ...prismaArgs], {
   stdio: "inherit",
   env: {
     ...process.env,
