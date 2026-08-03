@@ -6,7 +6,7 @@ preview drives. Built from the CAD STL exports by
 
 - Source STLs (not in repo): `C:\Users\jeffu\Projects\cat-ears-3d-print\3d exports for animation editor`
   (5 parts exported in assembled/global coordinates, mm, Z-up).
-- glb is Y-up, meters, 5 meshes, 39k triangles total, ~941 kB (≈550 kB gzipped).
+- glb is Y-up, meters, 5 meshes, 55k triangles total, ~1.32 MB (≈760 kB gzipped).
   Serve lazily; don't bundle.
 
 ## Node hierarchy
@@ -71,5 +71,9 @@ The build script recovers each shaft axis by cylinder-fitting those case ends
   headband at the band end tip — the mount.
 - Latitude axis: orthogonal, tangent to the band, offset 12.1 mm (one servo
   body width — the two servos are glued back-to-back).
-- Pivot points (CAD mm, Z-up): azimuth (±109.2, ~2.9, 43.6); latitude
-  (±109.2, ~15.0, 43.6).
+- Pivot points (CAD mm, Z-up): cylinder-fitted to azimuth (±109.2, ~2.9, 43.6)
+  and latitude (±109.2, ~15.0, 43.6), then shifted by manual corrections
+  dialed in visually against the physical robot in the Threlte preview
+  prototype (`AZ_PIVOT_CORRECTION_MM` / `LAT_PIVOT_CORRECTION_MM` in the
+  build script): azimuth +9.0 back, +12.5 up; latitude −13.0 forward-along-ear,
+  +1.0 up. Final: azimuth (±109.2, ~11.9, 56.1); latitude (±109.2, ~2.0, 44.6).
