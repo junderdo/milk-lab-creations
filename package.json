@@ -11,7 +11,8 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "dev": "AWS_PROFILE=milklab-dev sst dev",
-    "deploy": "sst deploy"
+    "deploy": "sst deploy",
+    "sso": "aws sso login --sso-session personal"
   },
   "devDependencies": {
     "prettier": "^3.6.0",
