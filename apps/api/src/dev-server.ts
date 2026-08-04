@@ -5,10 +5,12 @@ import { createServer } from "node:http";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { fetchProfile, verifyBearer } from "./auth.ts";
 import type { Context } from "./context.ts";
+import { LOCAL_WEB_ORIGIN, corsHeaders } from "./cors.ts";
 import { getDb } from "./db.ts";
 import { appRouter } from "./router.ts";
 
 const port = Number(process.env.PORT ?? 3001);
+const ALLOWED_ORIGINS = [LOCAL_WEB_ORIGIN];
 
 const handler = createHTTPHandler({
   router: appRouter,
@@ -20,12 +22,13 @@ const handler = createHTTPHandler({
   }),
 });
 
-// Browser CORS, including the preflight that authorized requests trigger;
-// API Gateway handles this in prod
+// Browser CORS, including the preflight that authorized requests trigger; the
+// same policy deployed stages enforce, narrowed to the one origin that can
+// reach this server
 createServer((req, res) => {
-  res.setHeader("access-control-allow-origin", "*");
-  res.setHeader("access-control-allow-headers", "authorization, content-type");
-  res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+  for (const [name, value] of Object.entries(corsHeaders(req.headers.origin, ALLOWED_ORIGINS))) {
+    res.setHeader(name, value);
+  }
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
