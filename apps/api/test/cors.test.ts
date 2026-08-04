@@ -154,6 +154,18 @@ describe("withCors", () => {
     expect(res.headers).not.toHaveProperty("access-control-allow-origin");
   });
 
+  it("unions vary with the router's own, so caches keep tRPC's content negotiation", async () => {
+    const inner = vi.fn(async () => ({
+      statusCode: 200,
+      headers: { vary: "trpc-accept, accept" },
+    }));
+    const res = await withCors(inner, ALLOWED)(
+      event("POST", { origin: LOCAL_WEB_ORIGIN }),
+      lambdaContext,
+    );
+    expect(res.headers?.vary).toBe("trpc-accept, accept, origin");
+  });
+
   it("reads a capitalized Origin header", async () => {
     const res = await withCors(ok(), ALLOWED)(
       event("POST", { Origin: STAGE_WEB_ORIGIN }),

@@ -3,13 +3,15 @@
 // requires. Runnable against any stage — nothing here knows about a stage
 // beyond the two flags.
 //
-//   node --experimental-strip-types scripts/check-cors.ts \
+//   pnpm --filter @milklab/api check:cors \
 //     --api-url https://api.milklabcreations.com \
 //     --origin https://milklabcreations.com
 //
 // Repeat --origin for every origin the stage is supposed to allow (a dev stage
 // allows both its own web origin and http://localhost:5173). Exits non-zero if
 // any check fails.
+
+export {}; // top-level await needs this file to be a module
 
 /** A public query: reachable without a token, so the check needs no auth. */
 const DEFAULT_PATH = "/trpc/robots.list";
@@ -116,6 +118,14 @@ async function checkAllowedOrigin(url: string, origin: string): Promise<Result[]
       `access-control-max-age: ${maxAge ?? "(absent)"}`,
     ),
   );
+  // Without vary:origin a shared cache can hand one origin's grant to another.
+  results.push(
+    check(
+      `preflight ${origin} → varies on origin`,
+      listIncludes(res.headers.get("vary"), "origin"),
+      `vary: ${res.headers.get("vary") ?? "(absent)"}`,
+    ),
+  );
   // Auth travels as a bearer header, so credentials must never be granted.
   const credentials = res.headers.get("access-control-allow-credentials");
   results.push(
@@ -134,6 +144,13 @@ async function checkAllowedOrigin(url: string, origin: string): Promise<Result[]
       `status ${real.status}, access-control-allow-origin: ${
         real.headers.get("access-control-allow-origin") ?? "(absent)"
       }`,
+    ),
+  );
+  results.push(
+    check(
+      `request ${origin} → varies on origin`,
+      listIncludes(real.headers.get("vary"), "origin"),
+      `vary: ${real.headers.get("vary") ?? "(absent)"}`,
     ),
   );
   return results;

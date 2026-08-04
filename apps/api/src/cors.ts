@@ -86,6 +86,24 @@ export function withCors(inner: LambdaHandler, allowed: readonly string[]): Lamb
     const headers = corsHeaders(event.headers?.origin ?? event.headers?.Origin, allowed);
     if (event.requestContext.http.method === "OPTIONS") return { statusCode: 204, headers };
     const result = await inner(event, context);
-    return { ...result, headers: { ...result.headers, ...headers } };
+    return { ...result, headers: mergeHeaders(result.headers, headers) };
   };
+}
+
+/**
+ * Router headers plus CORS headers. `vary` is unioned rather than overwritten:
+ * tRPC varies on its own content negotiation (`trpc-accept, accept`), and
+ * dropping that would let a cache serve one client's format to another.
+ */
+function mergeHeaders(
+  inner: APIGatewayProxyStructuredResultV2["headers"],
+  cors: Record<string, string>,
+): Record<string, string | number | boolean> {
+  const merged = { ...inner, ...cors };
+  const varyValues = [String(inner?.vary ?? ""), cors.vary ?? ""]
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  if (varyValues.length > 0) merged.vary = [...new Set(varyValues)].join(", ");
+  return merged;
 }
