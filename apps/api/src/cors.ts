@@ -12,6 +12,9 @@ import { Resource } from "sst";
 /** The vite dev server every stage's browser session may come from. */
 export const LOCAL_WEB_ORIGIN = "http://localhost:5173";
 
+/** Production's only browser origin; enforced at the gateway, never here. */
+export const PROD_WEB_ORIGIN = "https://milklabcreations.com";
+
 /** Preflight cache lifetime; keeps OPTIONS off the Lambda for a day. */
 const MAX_AGE_SECONDS = 86_400;
 
@@ -30,12 +33,16 @@ const POLICY = {
  */
 export function allowedOriginsFor(linkedWebUrl: string | undefined): string[] {
   if (!linkedWebUrl) return [];
-  return [LOCAL_WEB_ORIGIN, linkedWebUrl.replace(/\/+$/, "")];
+  const webOrigin = linkedWebUrl.replace(/\/+$/, "");
+  // production is the gateway's job either way, so a web link that ever lands
+  // on the production function can't quietly start granting localhost there
+  if (webOrigin === PROD_WEB_ORIGIN) return [];
+  return [LOCAL_WEB_ORIGIN, webOrigin];
 }
 
 /** Reads the linked web origin injected by `link: [web]` on non-prod stages. */
 export function allowedOrigins(): string[] {
-  return allowedOriginsFor("Web" in Resource ? (Resource.Web as { url: string }).url : undefined);
+  return allowedOriginsFor("Web" in Resource ? Resource.Web.url : undefined);
 }
 
 /**

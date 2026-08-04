@@ -1,12 +1,12 @@
-import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { awsLambdaRequestHandler } from "@trpc/server/adapters/aws-lambda";
+import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { fetchProfile, verifyBearer } from "./auth.ts";
-import { allowedOrigins, withCors } from "./cors.ts";
 import type { Context } from "./context.ts";
+import { allowedOrigins, withCors } from "./cors.ts";
 import { getDb } from "./db.ts";
 import { appRouter } from "./router.ts";
 
-const trpc = awsLambdaRequestHandler<typeof appRouter, APIGatewayProxyEventV2>({
+const trpcHandler = awsLambdaRequestHandler<typeof appRouter, APIGatewayProxyEventV2>({
   router: appRouter,
   createContext: async ({ event }): Promise<Context> => ({
     db: getDb(),
@@ -16,4 +16,4 @@ const trpc = awsLambdaRequestHandler<typeof appRouter, APIGatewayProxyEventV2>({
 });
 
 // no-op on production, where the gateway answers preflights at the edge
-export const handler = withCors(trpc, allowedOrigins());
+export const handler = withCors(trpcHandler, allowedOrigins());

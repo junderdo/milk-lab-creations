@@ -1,6 +1,12 @@
 import type { APIGatewayProxyEventV2, Context as LambdaContext } from "aws-lambda";
 import { describe, expect, it, vi } from "vitest";
-import { LOCAL_WEB_ORIGIN, allowedOriginsFor, corsHeaders, withCors } from "../src/cors.ts";
+import {
+  LOCAL_WEB_ORIGIN,
+  PROD_WEB_ORIGIN,
+  allowedOriginsFor,
+  corsHeaders,
+  withCors,
+} from "../src/cors.ts";
 
 const STAGE_WEB_ORIGIN = "https://d111111abcdef8.cloudfront.net";
 const ALLOWED = [LOCAL_WEB_ORIGIN, STAGE_WEB_ORIGIN];
@@ -25,6 +31,10 @@ describe("allowedOriginsFor", () => {
 
   it("normalizes a trailing slash off the linked url so it matches an Origin header", () => {
     expect(allowedOriginsFor(`${STAGE_WEB_ORIGIN}/`)).toEqual([LOCAL_WEB_ORIGIN, STAGE_WEB_ORIGIN]);
+  });
+
+  it("stays inert if it is ever linked to production's web, which must never allow localhost", () => {
+    expect(allowedOriginsFor(PROD_WEB_ORIGIN)).toEqual([]);
   });
 });
 
