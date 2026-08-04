@@ -1,18 +1,25 @@
-// Stage-aware CORS. Production's API Gateway carries a static allow-origin at
-// the edge and this module stays inert there; non-prod stages set cors:false on
-// the gateway and validate the Origin here instead, because a fresh stage's own
-// web origin is only knowable at deploy time (it is linked into the function).
+// Stage-aware CORS, owned by the Lambda on every stage including production.
+//
+// The gateway cannot own it: the router needs one greedy `ANY /trpc/{proxy+}`
+// route, that route matches OPTIONS, and a matching route beats API Gateway's
+// automatic preflight handling. Preflights therefore reached tRPC, which
+// answered 415 — a failed preflight in every browser. So the gateway sets
+// cors:false everywhere and the policy lives here, where it is testable and
+// identical on every stage.
+//
+// The origins come from ALLOWED_WEB_ORIGINS, set per stage in sst.config.ts:
+// production's is the static custom domain, a dev stage's own web origin is
+// only knowable at deploy time.
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
   Context as LambdaContext,
 } from "aws-lambda";
-import { Resource } from "sst";
 
 /** The vite dev server every stage's browser session may come from. */
 export const LOCAL_WEB_ORIGIN = "http://localhost:5173";
 
-/** Production's only browser origin; enforced at the gateway, never here. */
+/** Production's only browser origin. */
 export const PROD_WEB_ORIGIN = "https://milklabcreations.com";
 
 /** Preflight cache lifetime; keeps OPTIONS off the Lambda for a day. */
@@ -26,23 +33,27 @@ const POLICY = {
 } as const;
 
 /**
- * The origins this deployment enforces at runtime. Empty means "not our job" —
- * production, where the gateway answers preflights before we are invoked.
+ * The origins this deployment enforces, parsed from a comma-separated list.
+ * Empty means enforce nothing, which only happens if a stage sets no list.
  *
- * @param linkedWebUrl the stage's own web url, absent when web is not linked.
+ * @param raw the stage's ALLOWED_WEB_ORIGINS value.
  */
-export function allowedOriginsFor(linkedWebUrl: string | undefined): string[] {
-  if (!linkedWebUrl) return [];
-  const webOrigin = linkedWebUrl.replace(/\/+$/, "");
-  // production is the gateway's job either way, so a web link that ever lands
-  // on the production function can't quietly start granting localhost there
-  if (webOrigin === PROD_WEB_ORIGIN) return [];
-  return [LOCAL_WEB_ORIGIN, webOrigin];
+export function parseAllowedOrigins(raw: string | undefined): string[] {
+  const origins = (raw ?? "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter((origin) => origin.length > 0);
+  // belt and braces: production's list is written statically in sst.config.ts,
+  // but no misconfiguration should ever hand the live site's API to localhost
+  if (origins.includes(PROD_WEB_ORIGIN)) {
+    return origins.filter((origin) => origin !== LOCAL_WEB_ORIGIN);
+  }
+  return origins;
 }
 
-/** Reads the linked web origin injected by `link: [web]` on non-prod stages. */
+/** Reads the per-stage origin list injected by sst.config.ts. */
 export function allowedOrigins(): string[] {
-  return allowedOriginsFor("Web" in Resource ? Resource.Web.url : undefined);
+  return parseAllowedOrigins(process.env.ALLOWED_WEB_ORIGINS);
 }
 
 /**
@@ -66,8 +77,8 @@ type LambdaHandler = (
 
 /**
  * Enforces `allowed` around a Lambda handler: answers preflights and stamps the
- * grant on real responses. A no-op when `allowed` is empty, so production keeps
- * answering preflights at the gateway edge.
+ * grant on real responses. A no-op when `allowed` is empty, which is only a
+ * stage that configured no origins.
  */
 export function withCors(inner: LambdaHandler, allowed: readonly string[]): LambdaHandler {
   if (allowed.length === 0) return inner;

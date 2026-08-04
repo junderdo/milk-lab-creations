@@ -1,10 +1,10 @@
 import type { APIGatewayProxyEventV2, Context as LambdaContext } from "aws-lambda";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LOCAL_WEB_ORIGIN,
   PROD_WEB_ORIGIN,
-  allowedOriginsFor,
   corsHeaders,
+  parseAllowedOrigins,
   withCors,
 } from "../src/cors.ts";
 
@@ -20,21 +20,38 @@ function event(method: string, headers: Record<string, string>): APIGatewayProxy
 
 const lambdaContext = {} as LambdaContext;
 
-describe("allowedOriginsFor", () => {
-  it("returns no origins when the stage has no linked web origin (production: the gateway owns CORS)", () => {
-    expect(allowedOriginsFor(undefined)).toEqual([]);
+describe("parseAllowedOrigins", () => {
+  it("enforces nothing when the stage configured no origins", () => {
+    expect(parseAllowedOrigins(undefined)).toEqual([]);
+    expect(parseAllowedOrigins("")).toEqual([]);
   });
 
-  it("allows the local dev origin plus the stage's own web origin", () => {
-    expect(allowedOriginsFor(STAGE_WEB_ORIGIN)).toEqual([LOCAL_WEB_ORIGIN, STAGE_WEB_ORIGIN]);
+  it("reads a dev stage's pair: the local dev origin plus the stage's own web origin", () => {
+    expect(parseAllowedOrigins(`${LOCAL_WEB_ORIGIN},${STAGE_WEB_ORIGIN}`)).toEqual([
+      LOCAL_WEB_ORIGIN,
+      STAGE_WEB_ORIGIN,
+    ]);
   });
 
-  it("normalizes a trailing slash off the linked url so it matches an Origin header", () => {
-    expect(allowedOriginsFor(`${STAGE_WEB_ORIGIN}/`)).toEqual([LOCAL_WEB_ORIGIN, STAGE_WEB_ORIGIN]);
+  it("reads production's single origin", () => {
+    expect(parseAllowedOrigins(PROD_WEB_ORIGIN)).toEqual([PROD_WEB_ORIGIN]);
   });
 
-  it("stays inert if it is ever linked to production's web, which must never allow localhost", () => {
-    expect(allowedOriginsFor(PROD_WEB_ORIGIN)).toEqual([]);
+  it("normalizes a trailing slash off a deploy-time url so it matches an Origin header", () => {
+    expect(parseAllowedOrigins(`${STAGE_WEB_ORIGIN}/`)).toEqual([STAGE_WEB_ORIGIN]);
+  });
+
+  it("tolerates whitespace and empty entries from interpolated config", () => {
+    expect(parseAllowedOrigins(` ${LOCAL_WEB_ORIGIN} , , ${STAGE_WEB_ORIGIN} ,`)).toEqual([
+      LOCAL_WEB_ORIGIN,
+      STAGE_WEB_ORIGIN,
+    ]);
+  });
+
+  it("drops the local dev origin whenever production's origin is present, whatever config says", () => {
+    expect(parseAllowedOrigins(`${LOCAL_WEB_ORIGIN},${PROD_WEB_ORIGIN}`)).toEqual([
+      PROD_WEB_ORIGIN,
+    ]);
   });
 });
 
@@ -145,7 +162,7 @@ describe("withCors", () => {
     expect(res.headers?.["access-control-allow-origin"]).toBe(STAGE_WEB_ORIGIN);
   });
 
-  it("stays out of the way where the gateway owns CORS, preflights included", async () => {
+  it("stays out of the way when a stage configured no origins, preflights included", async () => {
     const inner = ok();
     const wrapped = withCors(inner, []);
     const post = await wrapped(event("POST", { origin: LOCAL_WEB_ORIGIN }), lambdaContext);
@@ -153,5 +170,52 @@ describe("withCors", () => {
 
     await wrapped(event("OPTIONS", { origin: LOCAL_WEB_ORIGIN }), lambdaContext);
     expect(inner).toHaveBeenCalledTimes(2);
+  });
+});
+
+// The bug this suite exists to prevent was never in cors.ts: it was that the
+// deployed preflight reached tRPC and came back 415, which a browser treats as
+// a failed preflight. These drive the real exported handler, so a regression in
+// the wiring — not just the policy — fails here.
+describe("the deployed lambda handler", () => {
+  beforeEach(() => vi.resetModules());
+  afterEach(() => vi.unstubAllEnvs());
+
+  async function handlerWithOrigins(origins: string) {
+    vi.stubEnv("ALLOWED_WEB_ORIGINS", origins);
+    return (await import("../src/lambda.ts")).handler;
+  }
+
+  it("answers a production preflight itself, 2xx, without reaching tRPC", async () => {
+    const handler = await handlerWithOrigins(PROD_WEB_ORIGIN);
+    const res = await handler(event("OPTIONS", { origin: PROD_WEB_ORIGIN }), lambdaContext);
+    expect(res.statusCode).toBe(204);
+    expect(res.headers?.["access-control-allow-origin"]).toBe(PROD_WEB_ORIGIN);
+    expect(res.headers?.["access-control-allow-headers"]).toContain("authorization");
+  });
+
+  it("never grants production to the local dev origin", async () => {
+    const handler = await handlerWithOrigins(`${LOCAL_WEB_ORIGIN},${PROD_WEB_ORIGIN}`);
+    const res = await handler(event("OPTIONS", { origin: LOCAL_WEB_ORIGIN }), lambdaContext);
+    expect(res.headers).not.toHaveProperty("access-control-allow-origin");
+  });
+
+  it("answers a dev stage preflight for both the stage origin and localhost", async () => {
+    const handler = await handlerWithOrigins(`${LOCAL_WEB_ORIGIN},${STAGE_WEB_ORIGIN}`);
+    for (const origin of [LOCAL_WEB_ORIGIN, STAGE_WEB_ORIGIN]) {
+      const res = await handler(event("OPTIONS", { origin }), lambdaContext);
+      expect(res.statusCode).toBe(204);
+      expect(res.headers?.["access-control-allow-origin"]).toBe(origin);
+    }
+  });
+
+  it("answers an unknown origin's preflight without granting it", async () => {
+    const handler = await handlerWithOrigins(PROD_WEB_ORIGIN);
+    const res = await handler(
+      event("OPTIONS", { origin: "https://evil.example.com" }),
+      lambdaContext,
+    );
+    expect(res.statusCode).toBe(204);
+    expect(res.headers).not.toHaveProperty("access-control-allow-origin");
   });
 });
