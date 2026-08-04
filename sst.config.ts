@@ -78,6 +78,15 @@ export default $config({
       // a matching route beats API Gateway's automatic preflight handling, so
       // preflights fell through to tRPC and came back 415.
       cors: false,
+      // ...but `cors: false` only sets an EMPTY cors configuration (sst's
+      // normalizeCors returns {}), and API Gateway strips the Origin header
+      // before the integration whenever ANY cors configuration is present — so
+      // the Lambda saw no Origin and could grant nothing. Force it absent.
+      transform: {
+        api: (apiArgs) => {
+          apiArgs.corsConfiguration = undefined;
+        },
+      },
     });
 
     const apiUrl = isProd ? "https://api.milklabcreations.com" : api.url;
