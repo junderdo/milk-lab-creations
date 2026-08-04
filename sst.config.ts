@@ -47,7 +47,8 @@ export default $config({
       attributes: { email: "email", name: "name", username: "sub" },
     });
 
-    const webOrigin = isProd ? "https://milklabcreations.com" : "http://localhost:5173";
+    const prodWebOrigin = "https://milklabcreations.com";
+    const webOrigin = isProd ? prodWebOrigin : "http://localhost:5173";
 
     const userPoolClient = userPool.addClient("WebClient", {
       providers: [google.providerName],
@@ -70,20 +71,20 @@ export default $config({
       },
     });
 
-    const trpcFn = new sst.aws.Function("TrpcFn", {
-      handler: "apps/api/src/lambda.handler",
-      link: [db, userPool, userPoolClient],
-    });
-
     const api = new sst.aws.ApiGatewayV2("Api", {
       domain: isProd ? "api.milklabcreations.com" : undefined,
-      cors: {
-        allowOrigins: [webOrigin],
+      // production's only browser origin is known statically, so the gateway
+      // answers preflights at the edge. A non-prod stage's own web origin only
+      // exists after deploy, so those stages validate the Origin in the Lambda
+      // instead (see apps/api/src/cors.ts) and the gateway stays out of it.
+      cors: isProd && {
+        allowOrigins: [prodWebOrigin],
         allowHeaders: ["authorization", "content-type"],
+        allowMethods: ["GET", "POST", "OPTIONS"],
+        allowCredentials: false,
+        maxAge: "1 day",
       },
     });
-    // single greedy route: httpBatchLink needs the whole router on one route
-    api.route("ANY /trpc/{proxy+}", trpcFn.arn);
 
     const apiUrl = isProd ? "https://api.milklabcreations.com" : api.url;
 
@@ -104,6 +105,16 @@ export default $config({
         ...authEnvironment,
       },
     });
+
+    // ordering matters: Api → Web → Function → route. Linking web into the
+    // function (non-prod only) is what tells its CORS wrapper the stage's own
+    // origin, and it stays acyclic because api.url is known before its routes.
+    const trpcFn = new sst.aws.Function("TrpcFn", {
+      handler: "apps/api/src/lambda.handler",
+      link: isProd ? [db, userPool, userPoolClient] : [db, userPool, userPoolClient, web],
+    });
+    // single greedy route: httpBatchLink needs the whole router on one route
+    api.route("ANY /trpc/{proxy+}", trpcFn.arn);
 
     if ($dev) {
       new sst.x.DevCommand("ApiServer", {
