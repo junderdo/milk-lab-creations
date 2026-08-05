@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "prisma generate && vitest run",
     "dev:server": "node --experimental-strip-types src/dev-server.ts",
+    "check:cors": "node --experimental-strip-types scripts/check-cors.ts",
     "generate": "prisma generate",
     "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
     "db:migrate:new": "aurora-dsql-prisma migrate prisma/schema.prisma -o",

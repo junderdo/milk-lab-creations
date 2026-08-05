@@ -15,5 +15,6 @@ const trpcHandler = awsLambdaRequestHandler<typeof appRouter, APIGatewayProxyEve
   }),
 });
 
-// no-op on production, where the gateway answers preflights at the edge
+// the Lambda owns CORS on every stage, production included: the greedy route
+// matches OPTIONS, so the gateway never sees a preflight (see ./cors.ts)
 export const handler = withCors(trpcHandler, allowedOrigins());
