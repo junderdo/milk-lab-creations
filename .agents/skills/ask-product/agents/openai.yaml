@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ask Product"
+  short_description: "File a Jira question ticket to the product/design team"
+policy:
+  allow_implicit_invocation: false

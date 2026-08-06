@@ -47,6 +47,18 @@ Credentials are stored in `~/.trello-cli/` (set up once via `trello auth:api-key
 
 ## Agent skills
 
+The engineering skills are vendored into this repo: real directories in
+`.agents/skills/` (tool-agnostic), exposed to Claude Code as symlinks in
+`.claude/skills/`. Project-level skills shadow any same-named skill installed
+globally, so this repo pins its own versions — matching the zagops setup.
+Local deviations from upstream are recorded in `.agents/skills/LOCAL-EDITS.md`.
+
+### Code review
+
+Always use `matt-code-review` — including when another skill (such as
+`/implement`) says to review the work. Never the generic `code-review`, which
+may exist as a global skill or plugin command.
+
 ### Issue tracker
 
 Cards on the **Milk Lab Creations** Trello board, driven by the `trello` CLI — not GitHub issues. See `docs/agents/issue-tracker.md`.

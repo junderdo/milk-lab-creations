@@ -1,0 +1,5 @@
+interface:
+  display_name: "Check Questions"
+  short_description: "Sweep open Jira question tickets for answers"
+policy:
+  allow_implicit_invocation: false
