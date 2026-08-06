@@ -2,30 +2,20 @@
 // struct (robo-cat-ears custom_animation_types.h), validated per robot
 // profile; the binary wire format is derived on demand, never stored.
 import { z } from "zod";
+import { MAX_PAYLOAD_BYTES, MAX_TIME_MS, type RobotProfile } from "./robot-limits.ts";
 
-export interface RobotProfile {
-  channels: number;
-  maxKeyframes: number;
-  maxAngle: number;
-  maxEaseType: number;
-}
+// The limits themselves live in robot-limits.ts, which the web editor imports
+// without dragging zod into the browser bundle. Re-exported so this module
+// stays the one place server code asks about the payload contract.
+export { MAX_PAYLOAD_BYTES, MAX_TIME_MS, ROBOT_PROFILES } from "./robot-limits.ts";
+export type { RobotProfile } from "./robot-limits.ts";
 
-/** Validation profiles keyed by robots.slug. New robots arrive by migration. */
-export const ROBOT_PROFILES: Record<string, RobotProfile> = {
-  "robo-cat-ears": { channels: 4, maxKeyframes: 64, maxAngle: 180, maxEaseType: 3 },
-};
-
-/** Defense-in-depth ceiling on the serialized payload, far above real use. */
-export const MAX_PAYLOAD_BYTES = 32 * 1024;
-
-const uint16 = z.number().int().min(0).max(65535);
+const uint16 = z.number().int().min(0).max(MAX_TIME_MS);
 
 export function payloadSchemaFor(profile: RobotProfile) {
   const keyframe = z.object({
     timeMs: uint16,
-    angles: z
-      .array(z.number().int().min(0).max(profile.maxAngle))
-      .length(profile.channels),
+    angles: z.array(z.number().int().min(0).max(profile.maxAngle)).length(profile.channels),
     easeInType: z.number().int().min(0).max(profile.maxEaseType),
     easeOutType: z.number().int().min(0).max(profile.maxEaseType),
     easeInMs: uint16,

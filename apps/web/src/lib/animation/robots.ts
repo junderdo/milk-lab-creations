@@ -15,3 +15,37 @@
 export function modelUrlFor(robotSlug: string): string {
   return `/models/${robotSlug}.glb`;
 }
+
+/** What to call a channel: on a chip (`short`) and to a screen reader (`full`). */
+export interface ChannelLabel {
+  short: string;
+  full: string;
+}
+
+/**
+ * Channel order is the rig's, and it is the payload's: index 0 is the first
+ * angle in every keyframe. Knowing that "channel 2" is the right ear swivelling
+ * is the difference between an editable curve and a numbered line.
+ */
+const CHANNEL_LABELS: Record<string, ChannelLabel[]> = {
+  "robo-cat-ears": [
+    { short: "L az", full: "Left ear azimuth" },
+    { short: "L lat", full: "Left ear latitude" },
+    { short: "R az", full: "Right ear azimuth" },
+    { short: "R lat", full: "Right ear latitude" },
+  ],
+};
+
+/**
+ * Labels for a robot's channels, padded with numbers for anything unnamed.
+ *
+ * Unlike the validation profile, a missing label is not a reason to refuse to
+ * edit: "Channel 3" is a worse name, not a wrong one.
+ */
+export function channelLabelsFor(robotSlug: string, channels: number): ChannelLabel[] {
+  const named = CHANNEL_LABELS[robotSlug] ?? [];
+  return Array.from({ length: channels }, (_unused, channel) => {
+    const label = named[channel];
+    return label ?? { short: `Ch ${channel + 1}`, full: `Channel ${channel + 1}` };
+  });
+}
