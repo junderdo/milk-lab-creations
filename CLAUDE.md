@@ -25,12 +25,15 @@ The board's lists are **Todo**, **In Progress**, and **Done**.
 ```bash
 trello list:list --board "Milk Lab Creations"                    # show the board's lists
 trello card:list --board "Milk Lab Creations" --list "Todo"      # list cards in a list
+trello card:get-by-id --id <card-id>                             # read a card in full
 trello card:create --board "Milk Lab Creations" --list "Todo" -n "Card title" --description "Details"
 trello card:move --board "Milk Lab Creations" --list "Todo" --card "Card title" --to "In Progress"
-trello search "some text"                                        # search cards
+trello search --query "some text" --board "Milk Lab Creations"   # search cards
 ```
 
-Run `trello <topic> --help` (e.g. `trello card --help`) to discover subcommands.
+Run `trello <topic> --help` (e.g. `trello card --help`) to discover subcommands. Card body shape,
+label handling, wayfinder conventions, and the CLI's sharp edges are in
+`docs/agents/issue-tracker.md`.
 
 ### Workflow
 
@@ -38,10 +41,20 @@ Run `trello <topic> --help` (e.g. `trello card --help`) to discover subcommands.
 - Move a card to **In Progress** when work starts, **Done** when it lands.
 - Reference the card title in related commit messages when it makes sense.
 
-### Gotchas
-
-- The CLI caches board/list names in a local SQLite db (`~/.trello-cli/default/trello.db`). If a board or list was renamed in Trello and the CLI reports it "not found" even though `board:list` shows it, the cache is stale.
-
 ### Auth
 
 Credentials are stored in `~/.trello-cli/` (set up once via `trello auth:api-key <key>` and `trello auth:token <token>`; key/token come from https://trello.com/power-ups/admin). If a command fails with an auth error, ask the user to re-authenticate — do not attempt to fetch tokens yourself.
+
+## Agent skills
+
+### Issue tracker
+
+Cards on the **Milk Lab Creations** Trello board, driven by the `trello` CLI — not GitHub issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and one `docs/adr/` at the repo root cover the whole monorepo. See `docs/agents/domain.md`.
