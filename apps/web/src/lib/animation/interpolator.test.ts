@@ -134,7 +134,7 @@ describe("sample", () => {
       kf({ timeMs: 2000, angles: [180, 0, 0, 0] }),
     ];
     expect(sample(frames, 1000)).toEqual([100, 0, 0, 0]); // exactly on the middle keyframe
-    expect(sample(frames, 1500)?.[0]).toBeCloseTo(140, 10); // midpoint hold of segment 2
+    expect(sample(frames, 1500)[0]).toBeCloseTo(140, 10); // midpoint hold of segment 2
   });
 
   it("throws on an empty keyframe list rather than returning a bogus pose", () => {

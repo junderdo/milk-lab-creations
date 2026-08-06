@@ -26,7 +26,9 @@
     /** Orbit + zoom, clamped. Off for the editor's fixed camera. */
     interactive: boolean;
     onpose?: (angles: number[]) => void;
+    /** Fired once the rig has been posed for the first time. */
     onready?: () => void;
+    onerror?: () => void;
   }
 
   let {
@@ -39,13 +41,19 @@
     interactive,
     onpose,
     onready,
+    onerror,
   }: Props = $props();
 
   // Read once on purpose: a scene is built for one robot, and AnimationViewer
   // keys on `modelUrl` so switching robots remounts rather than swapping the
   // model out from under the resolved pivots.
   const gltf = useGltf(untrack(() => modelUrl));
+  const gltfError = gltf.error;
   const { advance } = useThrelte();
+
+  $effect(() => {
+    if ($gltfError) onerror?.();
+  });
 
   // Cap the render loop at 120fps: the Canvas is in manual render mode, and we
   // only advance() once enough time has passed. A 240Hz display would otherwise
@@ -68,43 +76,66 @@
 
   /** A rig joint: which channel drives it, and the axis it turns about. */
   interface Pivot {
+    channel: number;
     node: THREE.Object3D;
     axis: THREE.Vector3;
     neutralDeg: number;
   }
 
+  /**
+   * glTF extras are a boundary: three.js types `userData` as `Record<string, any>`,
+   * so the rig contract is checked here rather than trusted. A node that doesn't
+   * carry a well-formed `{ channel, axis }` simply isn't a pivot.
+   */
+  function pivotFrom(node: THREE.Object3D): Pivot | null {
+    const { channel, axis, neutralDeg } = node.userData;
+    if (typeof channel !== "number" || !Number.isInteger(channel) || channel < 0) return null;
+    if (!Array.isArray(axis) || axis.length !== 3) return null;
+    const [x, y, z] = axis;
+    if (typeof x !== "number" || typeof y !== "number" || typeof z !== "number") return null;
+
+    return {
+      channel,
+      node,
+      // rotation sense is baked into the axis vector — no runtime sign factor
+      axis: new THREE.Vector3(x, y, z),
+      neutralDeg: typeof neutralDeg === "number" ? neutralDeg : 90,
+    };
+  }
+
+  // Dense and unordered: `channel` lives on the pivot rather than being its
+  // index, so a rig with sparse or unexpected channel numbers can't produce
+  // holes that later reads have to guard.
   let pivots = $state.raw<Pivot[]>([]);
   let target = $state.raw<[number, number, number]>([0, 0.05, 0]);
+  let posed = false;
 
-  // Pivots are resolved by traversal, not by a hardcoded name list: the glb's
-  // extras are the contract, so a new robot rig needs no code change here.
-  // Rotation sense is baked into the axis vectors — no runtime sign factor.
+  // Pivots are found by traversal, not a hardcoded name list: the glb's extras
+  // are the contract, so a new robot rig needs no code change here.
   $effect(() => {
     const scene = $gltf?.scene;
     if (!scene || pivots.length > 0) return;
 
     const found: Pivot[] = [];
     scene.traverse((node) => {
-      const { channel, axis, neutralDeg } = node.userData;
-      if (typeof channel !== "number" || !Array.isArray(axis)) return;
-      found[channel] = {
-        node,
-        axis: new THREE.Vector3(...(axis as [number, number, number])),
-        neutralDeg: typeof neutralDeg === "number" ? neutralDeg : 90,
-      };
+      const pivot = pivotFrom(node);
+      if (pivot !== null) found.push(pivot);
     });
     pivots = found;
 
     const center = new THREE.Box3().setFromObject(scene).getCenter(new THREE.Vector3());
     target = [center.x, center.y, center.z];
-    onready?.();
   });
 
-  function poseTo(angles: number[]) {
-    for (let ch = 0; ch < pivots.length; ch++) {
-      const pivot = pivots[ch];
-      const angle = angles[ch];
-      if (pivot === undefined || angle === undefined) continue;
+  /** Rest pose: every pivot at its own neutral angle, i.e. no rotation at all. */
+  function poseNeutral() {
+    for (const pivot of pivots) pivot.node.quaternion.identity();
+  }
+
+  function poseFrom(angles: number[]) {
+    for (const pivot of pivots) {
+      const angle = angles[pivot.channel];
+      if (angle === undefined) continue;
       pivot.node.quaternion.setFromAxisAngle(
         pivot.axis,
         THREE.MathUtils.degToRad(angle - pivot.neutralDeg),
@@ -116,22 +147,27 @@
     if (pivots.length === 0) return;
 
     if (neutral) {
-      poseTo(pivots.map((p) => p.neutralDeg));
-      return;
-    }
-
-    const total = durationMs(keyframes);
-    if (playing) {
-      currentTimeMs += delta * 1000;
-      if (currentTimeMs >= total) {
-        if (loop) currentTimeMs = total > 0 ? currentTimeMs % total : 0;
-        else currentTimeMs = total;
+      poseNeutral();
+    } else {
+      const total = durationMs(keyframes);
+      if (playing) {
+        currentTimeMs += delta * 1000;
+        if (currentTimeMs >= total) {
+          if (loop) currentTimeMs = total > 0 ? currentTimeMs % total : 0;
+          else currentTimeMs = total;
+        }
       }
+      const angles = sample(keyframes, currentTimeMs);
+      poseFrom(angles);
+      onpose?.(angles);
     }
 
-    const angles = sample(keyframes, currentTimeMs);
-    poseTo(angles);
-    onpose?.(angles);
+    // "ready" means posed, not merely parsed — the placeholder is holding space
+    // for a rendered frame, so it should not be pulled before there is one.
+    if (!posed) {
+      posed = true;
+      onready?.();
+    }
   });
 </script>
 

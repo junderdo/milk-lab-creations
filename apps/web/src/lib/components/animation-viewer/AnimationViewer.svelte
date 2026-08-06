@@ -25,7 +25,10 @@
     /** Orbit + zoom. */
     interactive?: boolean;
     onpose?: (angles: number[]) => void;
+    /** Fired once the rig has been posed for the first time. */
     onready?: () => void;
+    /** The model failed to load — the caller decides what to show instead. */
+    onerror?: () => void;
   }
 
   let {
@@ -36,6 +39,7 @@
     interactive = true,
     onpose,
     onready,
+    onerror,
   }: Props = $props();
 
   const total = $derived(durationMs(keyframes));
@@ -46,12 +50,13 @@
   const prefersReducedMotion =
     typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // Starting state only — both are owned by the transport controls afterwards,
-  // so the initial read of `transport` is the intended one.
+  // Starting state only — the transport controls own it afterwards, so the
+  // initial read of `transport` is the intended one.
   let playing = $state(untrack(() => transport) && !prefersReducedMotion);
-  // Cleared by the first play or scrub: reduced-motion users see the rest pose
-  // until they ask for motion, then the viewer behaves normally.
-  let neutral = $state(untrack(() => transport) && prefersReducedMotion);
+  // Not conditioned on `transport`: the preference is about motion, not about
+  // which control surface is driving. Cleared by the first play or scrub, after
+  // which the viewer behaves normally.
+  let neutral = $state(prefersReducedMotion);
 
   function togglePlay() {
     neutral = false;
@@ -80,6 +85,7 @@
           {interactive}
           {onpose}
           {onready}
+          {onerror}
         />
       {/key}
     </Canvas>

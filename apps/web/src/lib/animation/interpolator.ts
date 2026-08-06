@@ -25,9 +25,18 @@ export interface Keyframe {
 
 const C4 = (2 * Math.PI) / 3;
 
-/** `from.easeOutType` — easeIn-shaped: starts at rest, accelerates. */
+/**
+ * `from.easeOutType` — easeIn-shaped: starts at rest, accelerates.
+ *
+ * The firmware falls back to linear for unrecognised type bytes; here the union
+ * is already closed by the time a value reaches this function (payloads are
+ * coerced at the boundary in `payload.ts`), so an unhandled member is a bug to
+ * catch at compile time rather than paper over at runtime.
+ */
 function easeDepart(type: EaseType, x: number): number {
   switch (type) {
+    case 0:
+      return x; // linear
     case 1:
       return 1 - Math.cos((x * Math.PI) / 2);
     case 2:
@@ -36,14 +45,18 @@ function easeDepart(type: EaseType, x: number): number {
       if (x <= 0) return 0;
       if (x >= 1) return 1;
       return -Math.pow(2, 10 * x - 10) * Math.sin((x * 10 - 10.75) * C4);
-    default:
-      return x; // 0 = linear, and the firmware's fallback for unknown types
+    default: {
+      const unhandled: never = type;
+      throw new Error(`unhandled ease type: ${String(unhandled)}`);
+    }
   }
 }
 
 /** `to.easeInType` — easeOut-shaped: decelerates, ends at rest. */
 function easeArrive(type: EaseType, x: number): number {
   switch (type) {
+    case 0:
+      return x; // linear
     case 1:
       return Math.sin((x * Math.PI) / 2);
     case 2:
@@ -52,8 +65,10 @@ function easeArrive(type: EaseType, x: number): number {
       if (x <= 0) return 0;
       if (x >= 1) return 1;
       return Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * C4) + 1;
-    default:
-      return x;
+    default: {
+      const unhandled: never = type;
+      throw new Error(`unhandled ease type: ${String(unhandled)}`);
+    }
   }
 }
 
