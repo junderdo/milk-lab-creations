@@ -80,6 +80,9 @@ const animationListSelect = {
   visibility: true,
   durationMs: true,
   keyframeCount: true,
+  // cards draw their sparkline from the payload, so lists carry it: ≤64 keyframes
+  // and a 32 KB ceiling per row (`payload.ts`), which a page of cards absorbs
+  payload: true,
   remixedFromId: true, // cards show a remix badge; the source itself is not resolved here
   createdAt: true,
   updatedAt: true,
