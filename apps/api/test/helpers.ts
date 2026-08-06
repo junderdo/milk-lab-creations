@@ -98,7 +98,13 @@ export class FakeDb {
   readonly user = {
     findUnique: async ({ where }: { where: { id: string } }) =>
       this.users.find((u) => u.id === where.id) ?? null,
-    upsert: async ({ where, create }: { where: { id: string }; create: Omit<UserRow, "createdAt" | "updatedAt"> }) => {
+    upsert: async ({
+      where,
+      create,
+    }: {
+      where: { id: string };
+      create: Omit<UserRow, "createdAt" | "updatedAt">;
+    }) => {
       const existing = this.users.find((u) => u.id === where.id);
       if (existing) return existing;
       const row: UserRow = { ...create, createdAt: new Date(), updatedAt: new Date() };
@@ -140,7 +146,12 @@ export class FakeDb {
       return include ? this.robotView(row) : { ...row };
     },
     findMany: async (args: {
-      where?: { ownerId?: string; visibility?: string; robot?: { slug: string }; id?: { in: string[] } };
+      where?: {
+        ownerId?: string;
+        visibility?: string;
+        robot?: { slug: string };
+        id?: { in: string[] };
+      };
       select?: unknown;
       take?: number;
       cursor?: { id: string };
@@ -158,8 +169,7 @@ export class FakeDb {
         return true;
       });
       rows = [...rows].sort(
-        (a, b) =>
-          b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
       );
       if (args.cursor) {
         const idx = rows.findIndex((r) => r.id === args.cursor!.id);
@@ -170,7 +180,14 @@ export class FakeDb {
     },
     count: async ({ where }: { where: { ownerId: string } }) =>
       this.animations.filter((a) => a.ownerId === where.ownerId).length,
-    create: async ({ data }: { data: Omit<AnimationRow, "id" | "description" | "visibility" | "remixedFromId" | "createdAt" | "updatedAt"> & { description?: string | null; visibility?: Visibility; remixedFromId?: string | null } }) => {
+    create: async ({
+      data,
+    }: {
+      data: Omit<
+        AnimationRow,
+        "id" | "description" | "visibility" | "remixedFromId" | "createdAt" | "updatedAt"
+      > & { description?: string | null; visibility?: Visibility; remixedFromId?: string | null };
+    }) => {
       const row: AnimationRow = {
         id: uuid(),
         description: null,
@@ -212,8 +229,7 @@ export function makeContext(overrides?: {
     db: fake as unknown as Db,
     user: overrides?.sub === null || overrides?.sub === undefined ? null : { sub: overrides.sub },
     fetchProfile:
-      overrides?.fetchProfile ??
-      (async () => ({ email: "jeff@example.com", displayName: "Jeff" })),
+      overrides?.fetchProfile ?? (async () => ({ email: "jeff@example.com", displayName: "Jeff" })),
     fake,
   };
 }
