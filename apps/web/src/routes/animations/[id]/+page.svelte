@@ -1,10 +1,40 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
+  import { keyframesFromPayload } from "$lib/animation/payload";
+  import { modelUrlFor } from "$lib/animation/robots";
   import { trpc } from "$lib/trpc";
+  import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
 
   let { data } = $props();
   const animation = $derived(data.animation);
+  const keyframes = $derived(keyframesFromPayload(animation.payload));
+  const modelUrl = $derived(animation.robot ? modelUrlFor(animation.robot.slug) : null);
+  const previewable = $derived(keyframes.length > 0 && modelUrl !== null);
+
+  // The viewer pulls in three.js (~150-200 kB gzip), so it is its own chunk,
+  // imported eagerly on mount rather than scroll-gated — it is the page's point.
+  let Viewer: typeof AnimationViewer | null = $state(null);
+  let viewerReady = $state(false);
+  let viewerFailed = $state(false);
+
+  onMount(async () => {
+    try {
+      const module = await import("$lib/components/animation-viewer/AnimationViewer.svelte");
+      Viewer = module.default;
+    } catch {
+      viewerFailed = true;
+    }
+  });
+
+  const placeholderMessage = $derived(
+    viewerFailed
+      ? "Preview unavailable"
+      : !previewable
+        ? "No preview for this animation"
+        : "Loading preview…",
+  );
 
   let remixing = $state(false);
   let remixError: string | null = $state(null);
@@ -66,14 +96,28 @@
       {/if}
     </header>
 
-    <section class="space-y-2">
-      <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Keyframes</h2>
-      <pre
-        class="overflow-x-auto rounded-md bg-gray-100 p-4 text-xs text-gray-800 dark:bg-gray-900 dark:text-gray-200">{JSON.stringify(
-          animation.payload,
-          null,
-          2,
-        )}</pre>
+    <section>
+      <!-- Fixed aspect so the viewer arriving causes no layout shift. The
+           placeholder becomes the animation's sparkline in a later ticket. -->
+      <div
+        class="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-gray-100 dark:bg-gray-900"
+      >
+        {#if Viewer && modelUrl && previewable && !viewerFailed}
+          <Viewer
+            {keyframes}
+            {modelUrl}
+            onready={() => (viewerReady = true)}
+            onerror={() => (viewerFailed = true)}
+          />
+        {/if}
+        {#if !viewerReady || viewerFailed}
+          <div
+            class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-gray-400 dark:text-gray-600"
+          >
+            {placeholderMessage}
+          </div>
+        {/if}
+      </div>
     </section>
   </div>
 </main>
