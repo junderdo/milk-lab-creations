@@ -3,8 +3,27 @@ import superjson from "superjson";
 import type { Context } from "./context.ts";
 import { withOccRetry } from "./occ.ts";
 
+/**
+ * Attached as the `cause` of a CONFLICT error when a guarded write loses a
+ * lost-update race. `current` is the server's record as of the rejection; the
+ * errorFormatter lifts it onto the wire so the client can adopt it (or decide
+ * to overwrite) without a second round-trip.
+ */
+export class StaleWriteError extends Error {
+  constructor(readonly current: unknown) {
+    super("record was changed elsewhere");
+    this.name = "StaleWriteError";
+  }
+}
+
 // transformer must match the httpBatchLink transformer on every client
-const t = initTRPC.context<Context>().create({ transformer: superjson });
+const t = initTRPC.context<Context>().create({
+  transformer: superjson,
+  errorFormatter: ({ shape, error }) =>
+    error.cause instanceof StaleWriteError
+      ? { ...shape, data: { ...shape.data, current: error.cause.current } }
+      : shape,
+});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
