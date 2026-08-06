@@ -43,6 +43,10 @@ model Animation {
   payload       Json // { schemaVersion, keyframes } — never indexed
   durationMs    Int      @map("duration_ms") // derived from payload on write
   keyframeCount Int      @map("keyframe_count") // derived from payload on write
+  // Remix provenance. Deliberately a bare column, not a self-relation: the
+  // source may be deleted and this is allowed to dangle (UI shows "original
+  // deleted"). Set server-side on remix only — never client-writable.
+  remixedFromId String?  @map("remixed_from_id") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
