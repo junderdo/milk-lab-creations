@@ -210,8 +210,8 @@ description enforce their length limits at the input (`maxlength`, counter on de
 
 ## 5. Remix flow
 
-Decided in full; **entirely unbuilt** (no `remixedFromId` column, no `animations.remix` mutation on
-`main` as of this writing).
+Decided in full and **built**, except that the editor-header attribution waits on the editor routes
+(§6) — the Remix button lands on the fork's detail page until then.
 
 - **Rule: viewable = remixable.** Public, unlisted-via-link, and your own (remixing your own doubles as
   duplicate). Same visibility check `byId` already performs.

@@ -27,6 +27,13 @@
                 >
                   {item.visibility}
                 </span>
+                {#if item.remixedFromId}
+                  <span
+                    class="ml-1 rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-400"
+                  >
+                    remix
+                  </span>
+                {/if}
               </div>
               <span class="text-sm tabular-nums text-gray-600 dark:text-gray-400">
                 {(item.durationMs / 1000).toFixed(1)}s · {item.keyframeCount} keyframes

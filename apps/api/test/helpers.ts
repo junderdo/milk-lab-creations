@@ -30,6 +30,7 @@ export interface AnimationRow {
   payload: unknown;
   durationMs: number;
   keyframeCount: number;
+  remixedFromId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,6 +47,28 @@ export const ROBO_CAT_EARS: RobotRow = {
   name: "Robo Cat Ears",
   createdAt: new Date("2026-01-01"),
 };
+
+/**
+ * A complete animation row for tests that seed the fake directly rather than
+ * going through `create`. One place to touch when the table gains a column.
+ */
+export function makeAnimationRow(overrides: Partial<AnimationRow> = {}): AnimationRow {
+  return {
+    id: uuid(),
+    ownerId: uuid(),
+    robotId: ROBO_CAT_EARS.id,
+    name: "Seeded",
+    description: null,
+    visibility: "private",
+    payload: validPayload(),
+    durationMs: 500,
+    keyframeCount: 2,
+    remixedFromId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
 
 export class FakeDb {
   users: UserRow[] = [];
@@ -75,7 +98,13 @@ export class FakeDb {
   readonly user = {
     findUnique: async ({ where }: { where: { id: string } }) =>
       this.users.find((u) => u.id === where.id) ?? null,
-    upsert: async ({ where, create }: { where: { id: string }; create: Omit<UserRow, "createdAt" | "updatedAt"> }) => {
+    upsert: async ({
+      where,
+      create,
+    }: {
+      where: { id: string };
+      create: Omit<UserRow, "createdAt" | "updatedAt">;
+    }) => {
       const existing = this.users.find((u) => u.id === where.id);
       if (existing) return existing;
       const row: UserRow = { ...create, createdAt: new Date(), updatedAt: new Date() };
@@ -102,13 +131,27 @@ export class FakeDb {
   };
 
   readonly animation = {
-    findUnique: async ({ where, include }: { where: { id: string }; include?: unknown }) => {
+    findUnique: async ({
+      where,
+      include,
+      select,
+    }: {
+      where: { id: string };
+      include?: unknown;
+      select?: unknown;
+    }) => {
       const row = this.animations.find((a) => a.id === where.id);
       if (!row) return null;
+      if (select) return this.applySelect({ ...row }, select);
       return include ? this.robotView(row) : { ...row };
     },
     findMany: async (args: {
-      where?: { ownerId?: string; visibility?: string; robot?: { slug: string }; id?: { in: string[] } };
+      where?: {
+        ownerId?: string;
+        visibility?: string;
+        robot?: { slug: string };
+        id?: { in: string[] };
+      };
       select?: unknown;
       take?: number;
       cursor?: { id: string };
@@ -126,8 +169,7 @@ export class FakeDb {
         return true;
       });
       rows = [...rows].sort(
-        (a, b) =>
-          b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
       );
       if (args.cursor) {
         const idx = rows.findIndex((r) => r.id === args.cursor!.id);
@@ -138,11 +180,19 @@ export class FakeDb {
     },
     count: async ({ where }: { where: { ownerId: string } }) =>
       this.animations.filter((a) => a.ownerId === where.ownerId).length,
-    create: async ({ data }: { data: Omit<AnimationRow, "id" | "description" | "visibility" | "createdAt" | "updatedAt"> & { description?: string | null; visibility?: Visibility } }) => {
+    create: async ({
+      data,
+    }: {
+      data: Omit<
+        AnimationRow,
+        "id" | "description" | "visibility" | "remixedFromId" | "createdAt" | "updatedAt"
+      > & { description?: string | null; visibility?: Visibility; remixedFromId?: string | null };
+    }) => {
       const row: AnimationRow = {
         id: uuid(),
         description: null,
         visibility: "private",
+        remixedFromId: null,
         ...data,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -179,8 +229,7 @@ export function makeContext(overrides?: {
     db: fake as unknown as Db,
     user: overrides?.sub === null || overrides?.sub === undefined ? null : { sub: overrides.sub },
     fetchProfile:
-      overrides?.fetchProfile ??
-      (async () => ({ email: "jeff@example.com", displayName: "Jeff" })),
+      overrides?.fetchProfile ?? (async () => ({ email: "jeff@example.com", displayName: "Jeff" })),
     fake,
   };
 }

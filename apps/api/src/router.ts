@@ -20,8 +20,29 @@ const DELETE_BATCH_SIZE = 200;
 const VISIBILITIES = ["private", "unlisted", "public"] as const;
 export type Visibility = (typeof VISIBILITIES)[number];
 
-const nameSchema = z.string().trim().min(1).max(100);
+const NAME_MAX = 100;
+const nameSchema = z.string().trim().min(1).max(NAME_MAX);
 const descriptionSchema = z.string().trim().max(1000);
+
+/**
+ * "Remix of ⟨source⟩", truncated so a maxed-out source name still fits.
+ *
+ * Truncation walks code points rather than slicing code units: a bare
+ * `.slice(0, NAME_MAX)` can cut an astral character (emoji, and most non-Latin
+ * scripts beyond the BMP) in half, and the resulting lone surrogate is invalid
+ * UTF-8 that the database rejects — turning a legitimate remix into a 500.
+ * The budget is still counted in UTF-16 code units, matching `nameSchema`.
+ */
+function defaultRemixName(sourceName: string): string {
+  const full = `Remix of ${sourceName}`;
+  if (full.length <= NAME_MAX) return full;
+  let truncated = "";
+  for (const char of full) {
+    if (truncated.length + char.length > NAME_MAX) break;
+    truncated += char;
+  }
+  return truncated;
+}
 
 // Unvalidated shape accepted at the boundary; real validation is per-robot.
 const rawPayloadSchema = z.object({
@@ -59,6 +80,7 @@ const animationListSelect = {
   visibility: true,
   durationMs: true,
   keyframeCount: true,
+  remixedFromId: true, // cards show a remix badge; the source itself is not resolved here
   createdAt: true,
   updatedAt: true,
   ...ownerRobotSelect,
@@ -75,6 +97,40 @@ async function getVisibleAnimation(ctx: Context, id: string) {
     throw new TRPCError({ code: "NOT_FOUND" });
   }
   return animation;
+}
+
+/**
+ * A viewable animation plus its remix source as `remixedFrom` — null when there
+ * is none, when the source row is gone (the column is allowed to dangle — no
+ * FK), or when the caller cannot view it. `remixedFromId` stays on the record
+ * either way, so the client can tell "not a remix" from "remixed from something
+ * you can't see". Every caller that returns a full animation record uses this,
+ * so the shape stays uniform by construction rather than by convention.
+ */
+async function getVisibleAnimationWithSource(ctx: Context, id: string) {
+  const animation = await getVisibleAnimation(ctx, id);
+  if (animation.remixedFromId === null) return { ...animation, remixedFrom: null };
+  const source = await ctx.db.animation.findUnique({
+    where: { id: animation.remixedFromId },
+    select: { id: true, name: true, visibility: true, ownerId: true },
+  });
+  const viewable =
+    source !== null && (source.visibility !== "private" || source.ownerId === ctx.user?.sub);
+  return {
+    ...animation,
+    remixedFrom: viewable ? { id: source.id, name: source.name } : null,
+  };
+}
+
+/** Blocks runaway clients on every path that creates an animation. */
+async function assertUnderAnimationCap(ctx: Context, ownerId: string) {
+  const count = await ctx.db.animation.count({ where: { ownerId } });
+  if (count >= MAX_ANIMATIONS_PER_USER) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `animation limit reached (${MAX_ANIMATIONS_PER_USER})`,
+    });
+  }
 }
 
 async function getOwnedAnimation(ctx: Context, ownerId: string, id: string) {
@@ -169,7 +225,7 @@ const animationsRouter = router({
 
   byId: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .query(({ ctx, input }) => getVisibleAnimation(ctx, input.id)),
+    .query(({ ctx, input }) => getVisibleAnimationWithSource(ctx, input.id)),
 
   /** The firmware wire format, base64 — what a device actually plays. */
   wireById: publicProcedure
@@ -196,14 +252,7 @@ const animationsRouter = router({
       if (!robot) throw new TRPCError({ code: "NOT_FOUND", message: "unknown robot" });
 
       const payload = validatePayload(robot.slug, input.payload);
-
-      const count = await ctx.db.animation.count({ where: { ownerId: ctx.dbUser.id } });
-      if (count >= MAX_ANIMATIONS_PER_USER) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: `animation limit reached (${MAX_ANIMATIONS_PER_USER})`,
-        });
-      }
+      await assertUnderAnimationCap(ctx, ctx.dbUser.id);
 
       return withOccRetry(() =>
         ctx.db.animation.create({
@@ -214,6 +263,39 @@ const animationsRouter = router({
             description: input.description,
             payload,
             ...derivedScalars(payload),
+          },
+        }),
+      );
+    }),
+
+  /**
+   * Fork any animation the caller can view into a private copy of their own.
+   * Viewable = remixable, so remixing your own animation doubles as duplicate.
+   * The copy happens server-side: the payload never round-trips the client, and
+   * `remixedFromId` is taken from the source row rather than the input, so
+   * provenance cannot be forged.
+   */
+  remix: authedProcedure
+    .input(z.object({ id: z.string().uuid(), name: nameSchema.optional() }))
+    .mutation(async ({ ctx, input }) => {
+      // NOT_FOUND for anything the caller cannot view — same rule as byId
+      const source = await getVisibleAnimation(ctx, input.id);
+      await assertUnderAnimationCap(ctx, ctx.dbUser.id);
+
+      const payload = source.payload as unknown as AnimationPayload;
+      return withOccRetry(() =>
+        ctx.db.animation.create({
+          data: {
+            ownerId: ctx.dbUser.id,
+            robotId: source.robotId,
+            // a maxed-out source name would push the default past the 100-char
+            // limit, so clamp rather than reject a legitimate remix
+            name: input.name ?? defaultRemixName(source.name),
+            description: source.description,
+            payload,
+            ...derivedScalars(payload),
+            visibility: "private", // publishing a fork is always a fresh decision
+            remixedFromId: source.id,
           },
         }),
       );
@@ -249,7 +331,7 @@ const animationsRouter = router({
           message: "animation was changed elsewhere",
           // full record, joined the same way byId returns it, so the client can
           // swap it in wholesale
-          cause: new StaleWriteError(await getVisibleAnimation(ctx, input.id)),
+          cause: new StaleWriteError(await getVisibleAnimationWithSource(ctx, input.id)),
         });
       }
 

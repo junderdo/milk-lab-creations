@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { packWireFormat, type AnimationPayload } from "../src/payload.ts";
 import { appRouter, MAX_ANIMATIONS_PER_USER, type Visibility } from "../src/router.ts";
-import { makeContext, ROBO_CAT_EARS, uuid, validPayload } from "./helpers.ts";
+import { makeAnimationRow, makeContext, ROBO_CAT_EARS, uuid, validPayload } from "./helpers.ts";
 
 const SUB = "11111111-1111-4111-8111-111111111111";
 const OTHER_SUB = "22222222-2222-4222-8222-222222222222";
@@ -155,19 +155,7 @@ describe("quota", () => {
     const caller = callerFor(ctx);
     await caller.users.me(); // provision
     for (let i = 0; i < MAX_ANIMATIONS_PER_USER; i++) {
-      ctx.fake.animations.push({
-        id: uuid(),
-        ownerId: SUB,
-        robotId: ctx.fake.robots[0]!.id,
-        name: `a${i}`,
-        description: null,
-        visibility: "private",
-        payload: validPayload(),
-        durationMs: 500,
-        keyframeCount: 2,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      ctx.fake.animations.push(makeAnimationRow({ ownerId: SUB, name: `a${i}` }));
     }
     await expect(
       caller.animations.create({
@@ -222,6 +210,7 @@ describe("visibility", () => {
       name: "Public one",
       durationMs: 500,
       keyframeCount: 2,
+      remixedFromId: null,
       owner: { displayName: "Jeff" },
       robot: { slug: "robo-cat-ears" },
     });
@@ -240,19 +229,14 @@ describe("visibility", () => {
       createdAt: new Date("2026-01-02"),
     };
     ctx.fake.robots.push(otherRobot);
-    ctx.fake.animations.push({
-      id: uuid(),
-      ownerId: SUB,
-      robotId: otherRobot.id,
-      name: "Tail",
-      description: null,
-      visibility: "public",
-      payload: validPayload(),
-      durationMs: 500,
-      keyframeCount: 2,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    ctx.fake.animations.push(
+      makeAnimationRow({
+        ownerId: SUB,
+        robotId: otherRobot.id,
+        name: "Tail",
+        visibility: "public",
+      }),
+    );
 
     const anon = callerFor(makeContext({ db: ctx.fake }));
     const filtered = await anon.animations.gallery({ robotSlug: "robo-cat-ears" });
@@ -268,19 +252,16 @@ describe("visibility", () => {
     for (let i = 0; i < 3; i++) {
       const id = uuid();
       ids.push(id);
-      ctx.fake.animations.push({
-        id,
-        ownerId: SUB,
-        robotId: ROBO_CAT_EARS.id,
-        name: `page${i}`,
-        description: null,
-        visibility: "public",
-        payload: validPayload(),
-        durationMs: 500,
-        keyframeCount: 2,
-        createdAt: new Date(2026, 0, 1 + i), // distinct: newest last-created
-        updatedAt: new Date(2026, 0, 1 + i),
-      });
+      ctx.fake.animations.push(
+        makeAnimationRow({
+          id,
+          ownerId: SUB,
+          name: `page${i}`,
+          visibility: "public",
+          createdAt: new Date(2026, 0, 1 + i), // distinct: newest last-created
+          updatedAt: new Date(2026, 0, 1 + i),
+        }),
+      );
     }
 
     const anon = callerFor(makeContext({ db: ctx.fake }));
@@ -408,6 +389,27 @@ describe("conflict guard on animations.update", () => {
       owner: { displayName: "Jeff" },
       robot: { slug: "robo-cat-ears" },
     });
+    // byId resolves remixedFrom, so the record the client swaps in must too
+    expect(error?.cause?.current).toHaveProperty("remixedFrom", null);
+  });
+
+  it("carries the resolved remix source on the conflict record", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await seedAnimation(ctx, { name: "Original" });
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+    await callerFor(ctx).animations.update({ id: fork.id, name: "Renamed elsewhere" });
+
+    const error = await callerFor(ctx)
+      .animations.update({ id: fork.id, name: "Mine", expectedUpdatedAt: stale(fork) })
+      .then(
+        () => undefined,
+        (e: unknown) => e as { cause?: { current?: Record<string, unknown> } },
+      );
+
+    expect(error?.cause?.current).toMatchObject({
+      remixedFromId: source.id,
+      remixedFrom: { id: source.id, name: "Original" },
+    });
   });
 
   it("lets a matching expectedUpdatedAt through", async () => {
@@ -469,19 +471,9 @@ describe("deletion", () => {
     await caller.users.me();
     // more rows than one delete batch to prove the loop drains fully
     for (let i = 0; i < 450; i++) {
-      ctx.fake.animations.push({
-        id: uuid(),
-        ownerId: SUB,
-        robotId: ctx.fake.robots[0]!.id,
-        name: `a${i}`,
-        description: null,
-        visibility: "public",
-        payload: validPayload(),
-        durationMs: 500,
-        keyframeCount: 2,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      ctx.fake.animations.push(
+        makeAnimationRow({ ownerId: SUB, name: `a${i}`, visibility: "public" }),
+      );
     }
     const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
     const survivor = await seedAnimation(otherCtx, { name: "Survives" });
@@ -490,5 +482,183 @@ describe("deletion", () => {
 
     expect(ctx.fake.users.find((u) => u.id === SUB)).toBeUndefined();
     expect(ctx.fake.animations.map((a) => a.id)).toEqual([survivor.id]);
+  });
+});
+
+describe("remix", () => {
+  /** Source owned by someone else, at the given visibility. */
+  async function foreignSource(ctx: ReturnType<typeof makeContext>, visibility: Visibility) {
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    return seedAnimation(otherCtx, { name: "Theirs", visibility });
+  }
+
+  it("remixes any animation the caller can view", async () => {
+    for (const visibility of ["public", "unlisted"] as const) {
+      const ctx = makeContext({ sub: SUB });
+      const source = await foreignSource(ctx, visibility);
+      const fork = await callerFor(ctx).animations.remix({ id: source.id });
+      expect(fork).toMatchObject({ ownerId: SUB, remixedFromId: source.id });
+    }
+  });
+
+  it("remixes your own animation — duplicate is remix-of-self", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await seedAnimation(ctx); // private, owned by SUB
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+    expect(fork).toMatchObject({ ownerId: SUB, remixedFromId: source.id });
+  });
+
+  it("refuses someone else's private animation without leaking existence", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await foreignSource(ctx, "private");
+    await expect(callerFor(ctx).animations.remix({ id: source.id })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(ctx.fake.animations).toHaveLength(1); // no fork written
+  });
+
+  it("requires authentication", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await seedAnimation(ctx, { visibility: "public" });
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    await expect(anon.animations.remix({ id: source.id })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+  });
+
+  it("forks a full private copy with default name and provenance", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    const source = await callerFor(otherCtx).animations.create({
+      robotSlug: "robo-cat-ears",
+      name: "Ear Wiggle",
+      description: "Two quick flicks",
+      payload: validPayload(3),
+    });
+    await callerFor(otherCtx).animations.setVisibility({
+      id: source.id,
+      visibility: "public",
+    });
+
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+
+    expect(fork).toMatchObject({
+      ownerId: SUB,
+      robotId: source.robotId,
+      name: "Remix of Ear Wiggle",
+      description: "Two quick flicks",
+      visibility: "private", // never inherits the source's public visibility
+      durationMs: source.durationMs,
+      keyframeCount: source.keyframeCount,
+      remixedFromId: source.id,
+    });
+    expect(fork.payload).toEqual(source.payload);
+    expect(fork.id).not.toBe(source.id);
+  });
+
+  it("honors a caller-supplied name", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await seedAnimation(ctx, { visibility: "public" });
+    const fork = await callerFor(ctx).animations.remix({ id: source.id, name: "My take" });
+    expect(fork.name).toBe("My take");
+  });
+
+  it("keeps the default name inside the 100-char name limit", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await seedAnimation(ctx, { name: "N".repeat(100) });
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+    expect(fork.name.length).toBeLessThanOrEqual(100);
+    expect(fork.name.startsWith("Remix of NNN")).toBe(true);
+  });
+
+  it("truncates the default name on a character boundary, not mid-surrogate", async () => {
+    const ctx = makeContext({ sub: SUB });
+    // astral characters are two UTF-16 code units each, so a naive slice(0, 100)
+    // lands mid-pair and yields a lone surrogate — invalid UTF-8 to Postgres
+    const source = await seedAnimation(ctx, { name: "🐈".repeat(50) });
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+
+    expect(fork.name).toBe(`Remix of ${"🐈".repeat(45)}`); // 9 + 45*2 = 99 units
+    expect(Array.from(fork.name).at(-1)).toBe("🐈"); // a whole cat, not half of one
+    expect(fork.name.length).toBeLessThanOrEqual(100);
+  });
+
+  it("enforces the per-user animation cap", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await foreignSource(ctx, "public");
+    await callerFor(ctx).users.me();
+    for (let i = 0; i < MAX_ANIMATIONS_PER_USER; i++) {
+      ctx.fake.animations.push(makeAnimationRow({ ownerId: SUB }));
+    }
+
+    await expect(callerFor(ctx).animations.remix({ id: source.id })).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("chains provenance to the immediate source when remixing a remix", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await seedAnimation(ctx, { visibility: "public" });
+    const first = await callerFor(ctx).animations.remix({ id: source.id });
+    const second = await callerFor(ctx).animations.remix({ id: first.id });
+    expect(second.remixedFromId).toBe(first.id);
+  });
+});
+
+describe("remix provenance on byId", () => {
+  it("resolves remixedFrom when the source is viewable", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    const source = await seedAnimation(otherCtx, { name: "Theirs", visibility: "public" });
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+
+    const read = await callerFor(ctx).animations.byId({ id: fork.id });
+    expect(read.remixedFrom).toEqual({ id: source.id, name: "Theirs" });
+  });
+
+  it("returns a null remixedFrom for a non-remix", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx);
+    const read = await callerFor(ctx).animations.byId({ id: anim.id });
+    expect(read.remixedFromId).toBeNull();
+    expect(read.remixedFrom).toBeNull();
+  });
+
+  it("hides the source when it is no longer viewable, keeping remixedFromId", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    const source = await seedAnimation(otherCtx, { name: "Theirs", visibility: "public" });
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+
+    await callerFor(otherCtx).animations.setVisibility({
+      id: source.id,
+      visibility: "private",
+    });
+
+    const read = await callerFor(ctx).animations.byId({ id: fork.id });
+    expect(read.remixedFromId).toBe(source.id);
+    expect(read.remixedFrom).toBeNull();
+  });
+
+  it("dangles harmlessly when the source is deleted", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    const source = await seedAnimation(otherCtx, { name: "Theirs", visibility: "public" });
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+
+    await callerFor(otherCtx).animations.delete({ id: source.id });
+
+    const read = await callerFor(ctx).animations.byId({ id: fork.id });
+    expect(read.remixedFromId).toBe(source.id);
+    expect(read.remixedFrom).toBeNull();
+  });
+
+  it("still resolves a private source for its own owner", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const source = await seedAnimation(ctx, { name: "Mine" }); // private
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+
+    const read = await callerFor(ctx).animations.byId({ id: fork.id });
+    expect(read.remixedFrom).toEqual({ id: source.id, name: "Mine" });
   });
 });
