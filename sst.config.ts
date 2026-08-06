@@ -107,6 +107,20 @@ export default $config({
         PUBLIC_TRPC_URL: $dev ? "http://localhost:3001/trpc" : $interpolate`${apiUrl}/trpc`,
         ...authEnvironment,
       },
+      assets: {
+        fileOptions: [
+          {
+            // Rigged robot models: ~1 MB each, fetched lazily by the 3D viewer,
+            // and they only change when the CAD is rebuilt. Their paths are
+            // stable (`/models/<robot>.glb`), so a rebuilt model needs a
+            // CloudFront invalidation to reach clients that already cached it —
+            // accepted, since rig changes are rare and deliberate.
+            files: "**/*.glb",
+            contentType: "model/gltf-binary",
+            cacheControl: "public,max-age=31536000,immutable",
+          },
+        ],
+      },
     });
 
     // ordering matters: Api → Web → Function → route. The function needs web's
