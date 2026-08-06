@@ -6,7 +6,7 @@ preview drives. Built from the CAD STL exports by
 
 - Source STLs (not in repo): `C:\Users\jeffu\Projects\cat-ears-3d-print\3d exports for animation editor`
   (5 parts exported in assembled/global coordinates, mm, Z-up).
-- glb is Y-up, meters, 5 meshes, 39k triangles total, ~941 kB (≈550 kB gzipped).
+- glb is Y-up, meters, 5 meshes, 55k triangles total, ~1.32 MB (≈760 kB gzipped).
   Serve lazily; don't bundle.
 
 ## Node hierarchy
@@ -41,7 +41,7 @@ Each `*_Azimuth` / `*_Latitude` node carries glTF `extras` (surfaced by three.js
 as `object.userData`):
 
 ```json
-{ "channel": 0, "axis": [0.625923, 0.779884, -0.0], "neutralDeg": 90 }
+{ "channel": 0, "axis": [-0.625923, -0.779884, 0.0], "neutralDeg": 90 }
 ```
 
 `axis` is the rotation axis as a unit vector in the node's **parent** space
@@ -50,16 +50,15 @@ as `object.userData`):
 ```ts
 node.quaternion.setFromAxisAngle(
   new Vector3(...node.userData.axis),
-  THREE.MathUtils.degToRad(angleDeg - node.userData.neutralDeg) * sign,
+  THREE.MathUtils.degToRad(angleDeg - node.userData.neutralDeg),
 );
 ```
 
-**`sign` is unvalidated (+1 as built).** The rig geometry is verified (mirrored
-poses render correctly), but whether angle > 90 maps to the same physical
-direction as the firmware needs one visual check against the real robot —
-scheduled for the "Prototype: Threlte preview driven by the interpolator"
-ticket. If a direction is inverted, flip that node's sign in the viewer (or
-negate `axis` in the build script and rebuild).
+**Rotation signs are validated against the physical robot** ("Prototype: Threlte
+preview driven by the interpolator" ticket): the azimuth axes are negated from
+the up-normalized shaft direction (they point down in glTF space), the latitude
+axes were correct as fitted. The `axis` vectors fully encode the rotation sense
+— apply the axis-angle pose as-is, no per-node sign factor.
 
 ## Provenance of the pivots
 
@@ -71,5 +70,9 @@ The build script recovers each shaft axis by cylinder-fitting those case ends
   headband at the band end tip — the mount.
 - Latitude axis: orthogonal, tangent to the band, offset 12.1 mm (one servo
   body width — the two servos are glued back-to-back).
-- Pivot points (CAD mm, Z-up): azimuth (±109.2, ~2.9, 43.6); latitude
-  (±109.2, ~15.0, 43.6).
+- Pivot points (CAD mm, Z-up): cylinder-fitted to azimuth (±109.2, ~2.9, 43.6)
+  and latitude (±109.2, ~15.0, 43.6), then shifted by manual corrections
+  dialed in visually against the physical robot in the Threlte preview
+  prototype (`AZ_PIVOT_CORRECTION_MM` / `LAT_PIVOT_CORRECTION_MM` in the
+  build script): azimuth (±5.5, +13.0, +23.0); latitude (0, −11.5, +1.0).
+  Final: azimuth (±114.7, ~15.7, 66.5); latitude (±109.2, ~3.3, 44.5).
