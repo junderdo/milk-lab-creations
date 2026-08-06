@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { resolve } from "$app/paths";
+  import AnimationCard from "$lib/components/animation-card/AnimationCard.svelte";
 
   let { data } = $props();
 </script>
@@ -20,23 +20,20 @@
     {:else}
       <ul class="divide-y divide-gray-200 dark:divide-gray-800">
         {#each data.gallery.items as item (item.id)}
-          <li class="py-3">
-            <a
-              href={resolve("/animations/[id]", { id: item.id })}
-              class="group flex items-baseline justify-between"
+          <li>
+            <AnimationCard
+              id={item.id}
+              name={item.name}
+              payload={item.payload}
+              durationMs={item.durationMs}
+              keyframeCount={item.keyframeCount}
             >
-              <div>
-                <span class="font-medium text-gray-900 group-hover:underline dark:text-white">
-                  {item.name}
-                </span>
+              {#snippet byline()}
                 <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">
                   by {item.owner?.displayName ?? "unknown"} · {item.robot?.name}
                 </span>
-              </div>
-              <span class="text-sm tabular-nums text-gray-600 dark:text-gray-400">
-                {(item.durationMs / 1000).toFixed(1)}s · {item.keyframeCount} keyframes
-              </span>
-            </a>
+              {/snippet}
+            </AnimationCard>
           </li>
         {/each}
       </ul>

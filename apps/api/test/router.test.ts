@@ -204,8 +204,8 @@ describe("visibility", () => {
 
     const { items } = await callerFor(makeContext({ db: ctx.fake })).animations.gallery();
     expect(items.map((i: { id: string }) => i.id)).toEqual([pub.id]);
-    // browsing is payload-free: entries carry metadata only
-    expect(items[0]).not.toHaveProperty("payload");
+    // cards draw sparklines from the payload, so browsing carries it
+    expect(items[0]).toHaveProperty("payload");
     expect(items[0]).toMatchObject({
       name: "Public one",
       durationMs: 500,

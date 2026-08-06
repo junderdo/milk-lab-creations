@@ -5,6 +5,7 @@
   import { keyframesFromPayload } from "$lib/animation/payload";
   import { modelUrlFor } from "$lib/animation/robots";
   import { trpc } from "$lib/trpc";
+  import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
 
   let { data } = $props();
@@ -27,6 +28,9 @@
       viewerFailed = true;
     }
   });
+
+  // Nothing live to look at yet (or ever) — the curves and a message hold the space.
+  const showPlaceholder = $derived(!viewerReady || viewerFailed);
 
   const placeholderMessage = $derived(
     viewerFailed
@@ -97,8 +101,8 @@
     </header>
 
     <section>
-      <!-- Fixed aspect so the viewer arriving causes no layout shift. The
-           placeholder becomes the animation's sparkline in a later ticket. -->
+      <!-- Fixed aspect so the viewer arriving causes no layout shift. Until it
+           does, the space is held by the animation's own curves. -->
       <div
         class="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-gray-100 dark:bg-gray-900"
       >
@@ -110,7 +114,14 @@
             onerror={() => (viewerFailed = true)}
           />
         {/if}
-        {#if !viewerReady || viewerFailed}
+        {#if showPlaceholder}
+          <!-- the curves sit behind the message: whenever there's no live frame
+               to look at, they're what the space is holding -->
+          <AnimationSparkline
+            {keyframes}
+            label="Motion curves for {animation.name}"
+            class="absolute inset-0 h-full w-full p-6 opacity-60"
+          />
           <div
             class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-gray-400 dark:text-gray-600"
           >
