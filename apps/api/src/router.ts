@@ -24,9 +24,24 @@ const NAME_MAX = 100;
 const nameSchema = z.string().trim().min(1).max(NAME_MAX);
 const descriptionSchema = z.string().trim().max(1000);
 
-/** "Remix of ⟨source⟩", truncated so a maxed-out source name still fits. */
+/**
+ * "Remix of ⟨source⟩", truncated so a maxed-out source name still fits.
+ *
+ * Truncation walks code points rather than slicing code units: a bare
+ * `.slice(0, NAME_MAX)` can cut an astral character (emoji, and most non-Latin
+ * scripts beyond the BMP) in half, and the resulting lone surrogate is invalid
+ * UTF-8 that the database rejects — turning a legitimate remix into a 500.
+ * The budget is still counted in UTF-16 code units, matching `nameSchema`.
+ */
 function defaultRemixName(sourceName: string): string {
-  return `Remix of ${sourceName}`.slice(0, NAME_MAX);
+  const full = `Remix of ${sourceName}`;
+  if (full.length <= NAME_MAX) return full;
+  let truncated = "";
+  for (const char of full) {
+    if (truncated.length + char.length > NAME_MAX) break;
+    truncated += char;
+  }
+  return truncated;
 }
 
 // Unvalidated shape accepted at the boundary; real validation is per-robot.

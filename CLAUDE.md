@@ -14,6 +14,16 @@ pnpm --filter @milklab/web dev                     # SvelteKit dev (talks to :30
 
 AWS deploys use profile `milklab-dev` (us-west-2); re-auth with `aws sso login --sso-session personal`. Tark UI components are copy-pasted from tarkui.com (`?framework=svelte`) into `apps/web/src/lib/components/` — rewrite their `lucide-svelte` imports to `@lucide/svelte`.
 
+## Coding standards
+
+How we write TypeScript here is in `docs/typescript.md` — it holds in review across `apps/api`,
+`apps/web`, and `packages/config`.
+
+Copied verbatim from another repo as a starting point and **not yet tailored to this one**. Two known
+mismatches until it is: its `## Angular` section doesn't apply (we're SvelteKit / Svelte 5), and it
+links to a `parse-dont-validate.md` that doesn't exist here — the equivalent boundary parsing lives
+in `apps/api/src/payload.ts` and the Zod schemas in `apps/api/src/router.ts`.
+
 ## Issue tracking (Trello)
 
 Issues for this project are tracked on the **Milk Lab Creations** Trello board using the `trello` CLI (npm package `trello-cli`, installed globally).

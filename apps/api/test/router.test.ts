@@ -571,6 +571,18 @@ describe("remix", () => {
     expect(fork.name.startsWith("Remix of NNN")).toBe(true);
   });
 
+  it("truncates the default name on a character boundary, not mid-surrogate", async () => {
+    const ctx = makeContext({ sub: SUB });
+    // astral characters are two UTF-16 code units each, so a naive slice(0, 100)
+    // lands mid-pair and yields a lone surrogate — invalid UTF-8 to Postgres
+    const source = await seedAnimation(ctx, { name: "🐈".repeat(50) });
+    const fork = await callerFor(ctx).animations.remix({ id: source.id });
+
+    expect(fork.name).toBe(`Remix of ${"🐈".repeat(45)}`); // 9 + 45*2 = 99 units
+    expect(Array.from(fork.name).at(-1)).toBe("🐈"); // a whole cat, not half of one
+    expect(fork.name.length).toBeLessThanOrEqual(100);
+  });
+
   it("enforces the per-user animation cap", async () => {
     const ctx = makeContext({ sub: SUB });
     const source = await foreignSource(ctx, "public");
