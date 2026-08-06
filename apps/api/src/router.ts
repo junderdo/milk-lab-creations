@@ -9,7 +9,7 @@ import {
   ROBOT_PROFILES,
   type AnimationPayload,
 } from "./payload.ts";
-import { authedProcedure, publicProcedure, router } from "./trpc.ts";
+import { authedProcedure, publicProcedure, router, StaleWriteError } from "./trpc.ts";
 
 /** Per-user animation cap: blocks runaway clients, not real creative use. */
 export const MAX_ANIMATIONS_PER_USER = 100;
@@ -223,6 +223,9 @@ const animationsRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
+        // The caller's last-known updatedAt. Omitted → last-write-wins, so
+        // callers that never read one back are unaffected.
+        expectedUpdatedAt: z.date().optional(),
         name: nameSchema.optional(),
         description: descriptionSchema.nullable().optional(),
         payload: rawPayloadSchema.optional(),
@@ -230,6 +233,25 @@ const animationsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const existing = await getOwnedAnimation(ctx, ctx.dbUser.id, input.id);
+
+      // Lost-update detection, distinct from occ.ts's serialization retry.
+      // Deliberately a read-compare-write rather than an updatedAt predicate on
+      // the write: @updatedAt is written at millisecond precision into a
+      // microsecond column, so an equality predicate is not reliably
+      // round-trippable. The residual window between this check and the write
+      // is the price; the blast radius is one person in two tabs.
+      if (
+        input.expectedUpdatedAt !== undefined &&
+        existing.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+      ) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "animation was changed elsewhere",
+          // full record, joined the same way byId returns it, so the client can
+          // swap it in wholesale
+          cause: new StaleWriteError(await getVisibleAnimation(ctx, input.id)),
+        });
+      }
 
       let payloadData = {};
       if (input.payload !== undefined) {

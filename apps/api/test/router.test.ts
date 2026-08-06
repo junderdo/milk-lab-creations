@@ -368,6 +368,93 @@ describe("ownership", () => {
   });
 });
 
+describe("conflict guard on animations.update", () => {
+  /** A stale client's view of updatedAt: it saw the row one second ago. */
+  const stale = (row: { updatedAt: Date }) => new Date(row.updatedAt.getTime() - 1000);
+
+  it("rejects a stale expectedUpdatedAt with CONFLICT and writes nothing", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx);
+
+    await expect(
+      callerFor(ctx).animations.update({
+        id: anim.id,
+        name: "Stale rename",
+        expectedUpdatedAt: stale(anim),
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(ctx.fake.animations[0]).toMatchObject({ name: "Wiggle", updatedAt: anim.updatedAt });
+  });
+
+  it("carries the current server record on the conflict, joined like byId", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx);
+    await callerFor(ctx).animations.update({ id: anim.id, name: "Renamed elsewhere" });
+    const current = ctx.fake.animations[0]!;
+
+    const error = await callerFor(ctx)
+      .animations.update({ id: anim.id, name: "Mine", expectedUpdatedAt: stale(anim) })
+      .then(
+        () => undefined,
+        (e: unknown) => e as { cause?: { current?: Record<string, unknown> } },
+      );
+
+    expect(error?.cause?.current).toMatchObject({
+      id: anim.id,
+      name: "Renamed elsewhere",
+      updatedAt: current.updatedAt,
+      payload: current.payload,
+      owner: { displayName: "Jeff" },
+      robot: { slug: "robo-cat-ears" },
+    });
+  });
+
+  it("lets a matching expectedUpdatedAt through", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx);
+
+    const updated = await callerFor(ctx).animations.update({
+      id: anim.id,
+      name: "Fresh rename",
+      expectedUpdatedAt: anim.updatedAt,
+    });
+    expect(updated.name).toBe("Fresh rename");
+  });
+
+  it("preserves last-write-wins when expectedUpdatedAt is omitted", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx);
+    await callerFor(ctx).animations.update({ id: anim.id, name: "Someone else's edit" });
+
+    const updated = await callerFor(ctx).animations.update({ id: anim.id, name: "Blind write" });
+    expect(updated.name).toBe("Blind write");
+  });
+
+  it("checks ownership before the guard, so a stale non-owner still gets NOT_FOUND", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx);
+    const other = callerFor(makeContext({ db: ctx.fake, sub: OTHER_SUB }));
+
+    await expect(
+      other.animations.update({ id: anim.id, name: "Stolen", expectedUpdatedAt: stale(anim) }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("rejects anonymous callers before the guard", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const anim = await seedAnimation(ctx);
+
+    await expect(
+      callerFor(makeContext({ db: ctx.fake })).animations.update({
+        id: anim.id,
+        name: "Anon",
+        expectedUpdatedAt: stale(anim),
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
 describe("deletion", () => {
   it("deletes a single animation", async () => {
     const ctx = makeContext({ sub: SUB });
