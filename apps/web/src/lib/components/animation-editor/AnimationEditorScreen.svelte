@@ -22,7 +22,13 @@
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import AnimationTimeline from "$lib/components/animation-timeline/AnimationTimeline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
-  import { insertionIndexFor, updateInputFor, type RobotLimits } from "$lib/editor/document";
+  import {
+    DESCRIPTION_MAX,
+    insertionIndexFor,
+    NAME_MAX,
+    updateInputFor,
+    type RobotLimits,
+  } from "$lib/editor/document";
   import { AnimationEditor, type LoadedAnimation } from "$lib/editor/editor-state";
   import { saveFailureFrom } from "$lib/editor/save-error";
   import { trpc } from "$lib/trpc";
@@ -38,9 +44,9 @@
   // animation is a different mount. `untrack` says that rather than leaving a
   // "did you mean a derived?" warning for the next reader to re-litigate.
   const opened = untrack(() => animation);
-  const robotSlug = opened.robot?.slug ?? "";
-  const labels = channelLabelsFor(robotSlug, untrack(() => limits).channels);
-  const modelUrl = opened.robot === null ? null : modelUrlFor(robotSlug);
+  const robot = opened.robot;
+  const labels = channelLabelsFor(robot?.slug, untrack(() => limits).channels);
+  const modelUrl = robot === null ? null : modelUrlFor(robot.slug);
 
   // Not deeply proxied: Svelte leaves class instances alone, so reactivity is
   // exactly the reassignments below and never a half-applied mutation mid-drag.
@@ -54,21 +60,23 @@
   let playheadMs = $state(0);
   let selectedIndex = $state<number | null>(null);
 
-  const DESCRIPTION_MAX = 1000;
-
   // Same lazy-chunk treatment as the detail page: the viewer is ~150-200 kB of
   // three.js and the editor is usable before it arrives.
   let Viewer: typeof AnimationViewer | null = $state(null);
   let viewerReady = $state(false);
   let viewerFailed = $state(false);
 
-  onMount(async () => {
-    try {
-      const module = await import("$lib/components/animation-viewer/AnimationViewer.svelte");
-      Viewer = module.default;
-    } catch {
-      viewerFailed = true;
-    }
+  // `void`, not an async callback: onMount treats a returned promise as a
+  // cleanup function, and this one has nothing to clean up.
+  onMount(() => {
+    void (async () => {
+      try {
+        const module = await import("$lib/components/animation-viewer/AnimationViewer.svelte");
+        Viewer = module.default;
+      } catch {
+        viewerFailed = true;
+      }
+    })();
   });
 
   const showPlaceholder = $derived(!viewerReady || viewerFailed);
@@ -139,7 +147,7 @@
           <input
             id="animation-name"
             type="text"
-            maxlength="100"
+            maxlength={NAME_MAX}
             value={editor.document.name}
             oninput={(event) => (editor = editor.setName(event.currentTarget.value))}
             placeholder="Name this animation"
@@ -170,7 +178,7 @@
           </a>
           <button
             type="button"
-            onclick={save}
+            onclick={() => void save()}
             disabled={!editor.canSave}
             class="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
           >
@@ -202,7 +210,7 @@
         >
           <span>{editor.errorMessage}</span>
           <span class="flex gap-3">
-            <button type="button" class="underline" onclick={save}>Try again</button>
+            <button type="button" class="underline" onclick={() => void save()}>Try again</button>
             <button
               type="button"
               class="underline"
@@ -296,7 +304,7 @@
         </button>
         <button
           type="button"
-          onclick={overwrite}
+          onclick={() => void overwrite()}
           class="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
         >
           Overwrite

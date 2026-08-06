@@ -45,6 +45,18 @@ function roundCoord(value: number): number {
 }
 
 /**
+ * Where an angle sits vertically in a box of `height`: 0° at the bottom, the
+ * robot's maximum at the top.
+ *
+ * Exported because the graph editor has to place its draggable dots on the
+ * curves this module draws. Two copies of this formula is two chances for a dot
+ * to sit beside the line it is supposed to be a handle for.
+ */
+export function angleToY(angle: number, height: number, maxAngle = DEFAULT_MAX_ANGLE): number {
+  return height - (angle / maxAngle) * height;
+}
+
+/**
  * Times to evaluate the animation at: an even sweep plus every keyframe time.
  *
  * The even sweep alone can step straight over a short hold — a 20 ms blip in a
@@ -114,7 +126,7 @@ export function channelPaths(
     for (const { x, pose } of points) {
       const angle = pose[channel];
       if (angle === undefined) continue; // a pose that doesn't drive this channel leaves a gap
-      const y = roundCoord(box.height - (angle / maxAngle) * box.height);
+      const y = roundCoord(angleToY(angle, box.height, maxAngle));
       d += `${d === "" ? "M" : "L"}${x} ${y}`;
     }
     return d;

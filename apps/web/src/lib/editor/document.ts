@@ -17,13 +17,13 @@
  * "invalid document" state for the UI to message.
  */
 
-import { MAX_TIME_MS, ROBOT_PROFILES } from "@milklab/api/robot-limits";
+import { DESCRIPTION_MAX, MAX_TIME_MS, NAME_MAX, ROBOT_PROFILES } from "@milklab/api/limits";
 import { sample, type EaseType, type Keyframe } from "../animation/interpolator";
 import { keyframesFromPayload } from "../animation/payload";
 
-/** Mirrors `nameSchema` / `descriptionSchema` in the API router. */
-const NAME_MAX = 100;
-const DESCRIPTION_MAX = 1000;
+// The same numbers `nameSchema` / `descriptionSchema` enforce server-side, so
+// the inputs cannot produce a document the API would reject.
+export { DESCRIPTION_MAX, NAME_MAX };
 
 /** What the editor needs to keep a document inside the robot's contract. */
 export interface RobotLimits {
@@ -31,6 +31,8 @@ export interface RobotLimits {
   maxKeyframes: number;
   maxAngle: number;
   maxTimeMs: number;
+  /** Highest ease type this robot's firmware understands. */
+  maxEaseType: number;
 }
 
 /**
@@ -41,15 +43,22 @@ export interface RobotLimits {
  * documents the server then rejects, so the absence is in the type and the
  * caller decides what to show.
  */
-export function limitsFor(robotSlug: string): RobotLimits | undefined {
-  const profile = ROBOT_PROFILES[robotSlug];
+export function limitsFor(robotSlug: string | undefined): RobotLimits | undefined {
+  const profile = robotSlug === undefined ? undefined : ROBOT_PROFILES[robotSlug];
   if (profile === undefined) return undefined;
   return {
     channels: profile.channels,
     maxKeyframes: profile.maxKeyframes,
     maxAngle: profile.maxAngle,
     maxTimeMs: MAX_TIME_MS,
+    maxEaseType: profile.maxEaseType,
   };
+}
+
+/** The ease types this robot accepts — what the popover is allowed to offer. */
+export function easeTypesFor(limits: RobotLimits): EaseType[] {
+  const all: EaseType[] = [0, 1, 2, 3];
+  return all.filter((type) => type <= limits.maxEaseType);
 }
 
 export interface EditorPayload {
@@ -203,10 +212,14 @@ export function setEase(
 ): EditorDocument {
   const window = (ms: number | undefined, current: number) =>
     ms === undefined ? current : Math.round(clamp(ms, 0, limits.maxTimeMs));
+  // an ease type this robot's firmware doesn't know is not a curve it would
+  // play — the patch is dropped rather than written and rejected on save
+  const type = (next: EaseType | undefined, current: EaseType) =>
+    next === undefined || next > limits.maxEaseType ? current : next;
   return withKeyframeAt(document, index, (frame) => ({
     ...frame,
-    easeInType: patch.easeInType ?? frame.easeInType,
-    easeOutType: patch.easeOutType ?? frame.easeOutType,
+    easeInType: type(patch.easeInType, frame.easeInType),
+    easeOutType: type(patch.easeOutType, frame.easeOutType),
     easeInMs: window(patch.easeInMs, frame.easeInMs),
     easeOutMs: window(patch.easeOutMs, frame.easeOutMs),
   }));

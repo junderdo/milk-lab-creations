@@ -6,6 +6,7 @@ import {
   documentsEqual,
   insertionIndexFor,
   keyframesOf,
+  easeTypesFor,
   limitsFor,
   removeKeyframe,
   setAngle,
@@ -40,13 +41,25 @@ const doc = docOf(
 
 describe("limitsFor", () => {
   it("reads the robot's profile rather than assuming robo-cat-ears", () => {
-    expect(limits).toEqual({ channels: 4, maxKeyframes: 64, maxAngle: 180, maxTimeMs: 65535 });
+    expect(limits).toEqual({
+      channels: 4,
+      maxKeyframes: 64,
+      maxAngle: 180,
+      maxTimeMs: 65535,
+      maxEaseType: 3,
+    });
+  });
+
+  it("offers only the ease curves the robot's firmware knows", () => {
+    expect(easeTypesFor(limits)).toEqual([0, 1, 2, 3]);
+    expect(easeTypesFor({ ...limits, maxEaseType: 1 })).toEqual([0, 1]);
   });
 
   it("has nothing to offer for a robot with no profile, and says so", () => {
     // a robot can arrive by migration before ROBOT_PROFILES knows it; guessing
     // its limits would build documents the server then rejects
     expect(limitsFor("robo-tentacles")).toBeUndefined();
+    expect(limitsFor(undefined)).toBeUndefined();
   });
 });
 
@@ -149,6 +162,12 @@ describe("setEase", () => {
   it("patches only the named fields of one column", () => {
     const eased = keyframesOf(setEase(doc, limits, 1, { easeInType: 3, easeOutMs: 20 }))[1];
     expect(eased).toMatchObject({ easeInType: 3, easeOutMs: 20, easeOutType: 1, easeInMs: 150 });
+  });
+
+  it("drops an ease type the robot's firmware does not have", () => {
+    const simple = { ...limits, maxEaseType: 1 };
+    expect(keyframesOf(setEase(doc, simple, 1, { easeInType: 3 }))[1]?.easeInType).toBe(1);
+    expect(keyframesOf(setEase(doc, simple, 1, { easeInType: 0 }))[1]?.easeInType).toBe(0);
   });
 
   it("clamps ease windows to the uint16 range", () => {

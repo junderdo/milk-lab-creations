@@ -10,15 +10,18 @@ import type { PageLoad } from "./$types";
  */
 export const ssr = false;
 
-export const load: PageLoad = async ({ fetch, params, parent }) => {
-  const { accessToken, me } = await parent();
-
-  let animation;
+/** NOT_FOUND is what the API returns for anything the caller cannot view. */
+async function loadAnimation(fetchFn: typeof fetch, accessToken: string | null, id: string) {
   try {
-    animation = await trpc(fetch, accessToken).animations.byId.query({ id: params.id });
+    return await trpc(fetchFn, accessToken).animations.byId.query({ id });
   } catch {
     error(404, "Animation not found");
   }
+}
+
+export const load: PageLoad = async ({ fetch, params, parent }) => {
+  const { accessToken, me } = await parent();
+  const animation = await loadAnimation(fetch, accessToken, params.id);
 
   // Only the owner edits. Everyone else lands on the detail page, where Remix
   // is their way in — the same rule the API enforces on the write.
@@ -29,7 +32,7 @@ export const load: PageLoad = async ({ fetch, params, parent }) => {
   // Without a validation profile there are no limits to keep edits inside, and
   // every save would be rejected server-side. Better to say so than to open an
   // editor that cannot produce a document this robot accepts.
-  const limits = limitsFor(animation.robot?.slug ?? "");
+  const limits = limitsFor(animation.robot?.slug);
   if (limits === undefined) {
     error(501, `${animation.robot?.name ?? "This robot"} can't be edited yet`);
   }

@@ -13,11 +13,9 @@
 export interface ChannelStyle {
   /** The curve itself. */
   stroke: string;
-  /** Dots, chips and readouts — the same hue as text or fill. */
+  /** Dots, chips and readouts — the same hue as the curve. */
   text: string;
   border: string;
-  /** Chip background when the channel is showing. */
-  fill: string;
 }
 
 /**
@@ -29,25 +27,21 @@ export const CHANNEL_STYLES: ChannelStyle[] = [
     stroke: "stroke-sky-600 dark:stroke-sky-400",
     text: "text-sky-600 dark:text-sky-400",
     border: "border-sky-600 dark:border-sky-400",
-    fill: "fill-sky-600 dark:fill-sky-400",
   },
   {
     stroke: "stroke-violet-600 dark:stroke-violet-400",
     text: "text-violet-600 dark:text-violet-400",
     border: "border-violet-600 dark:border-violet-400",
-    fill: "fill-violet-600 dark:fill-violet-400",
   },
   {
     stroke: "stroke-amber-600 dark:stroke-amber-400",
     text: "text-amber-600 dark:text-amber-400",
     border: "border-amber-600 dark:border-amber-400",
-    fill: "fill-amber-600 dark:fill-amber-400",
   },
   {
     stroke: "stroke-emerald-600 dark:stroke-emerald-400",
     text: "text-emerald-600 dark:text-emerald-400",
     border: "border-emerald-600 dark:border-emerald-400",
-    fill: "fill-emerald-600 dark:fill-emerald-400",
   },
 ];
 

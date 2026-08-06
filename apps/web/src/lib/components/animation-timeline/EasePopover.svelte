@@ -21,6 +21,8 @@
     /** Where the column sits on the canvas, in px. */
     columnX: number;
     canvasWidth: number;
+    /** Only the curves this robot's firmware understands. */
+    easeTypes: EaseType[];
     isFirst: boolean;
     isLast: boolean;
     canRemove: boolean;
@@ -34,6 +36,7 @@
     index,
     columnX,
     canvasWidth,
+    easeTypes,
     isFirst,
     isLast,
     canRemove,
@@ -45,12 +48,12 @@
   const WIDTH = 256;
   const GAP = 16;
 
-  const EASE_TYPES: { value: EaseType; label: string }[] = [
-    { value: 0, label: "None" },
-    { value: 1, label: "Sine" },
-    { value: 2, label: "Cubic" },
-    { value: 3, label: "Elastic" },
-  ];
+  /** Indexed by ease type — the firmware's own numbering. */
+  const EASE_LABELS = ["None", "Sine", "Cubic", "Elastic"];
+
+  function labelOf(type: EaseType): string {
+    return EASE_LABELS[type] ?? `Type ${type}`;
+  }
 
   const left = $derived(
     columnX + GAP + WIDTH <= canvasWidth ? columnX + GAP : Math.max(columnX - GAP - WIDTH, 4), // no room on the right: flip, but stay on canvas
@@ -88,17 +91,17 @@
   <div class="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1">
     <span class="text-gray-500">out</span>
     <div class="flex gap-1">
-      {#each EASE_TYPES as ease (ease.value)}
+      {#each easeTypes as ease (ease)}
         <button
           type="button"
           disabled={isLast}
-          title={isLast ? "The last keyframe has nothing to ease out into" : ease.label}
-          class="rounded border px-1 py-0.5 disabled:opacity-40 {keyframe.easeOutType === ease.value
+          title={isLast ? "The last keyframe has nothing to ease out into" : labelOf(ease)}
+          class="rounded border px-1 py-0.5 disabled:opacity-40 {keyframe.easeOutType === ease
             ? selectedClasses
             : unselectedClasses}"
-          onclick={() => onpatch({ easeOutType: ease.value })}
+          onclick={() => onpatch({ easeOutType: ease })}
         >
-          {ease.label}
+          {labelOf(ease)}
         </button>
       {/each}
     </div>
@@ -114,17 +117,17 @@
 
     <span class="text-gray-500">in</span>
     <div class="flex gap-1">
-      {#each EASE_TYPES as ease (ease.value)}
+      {#each easeTypes as ease (ease)}
         <button
           type="button"
           disabled={isFirst}
-          title={isFirst ? "The first keyframe is taken up instantly" : ease.label}
-          class="rounded border px-1 py-0.5 disabled:opacity-40 {keyframe.easeInType === ease.value
+          title={isFirst ? "The first keyframe is taken up instantly" : labelOf(ease)}
+          class="rounded border px-1 py-0.5 disabled:opacity-40 {keyframe.easeInType === ease
             ? selectedClasses
             : unselectedClasses}"
-          onclick={() => onpatch({ easeInType: ease.value })}
+          onclick={() => onpatch({ easeInType: ease })}
         >
-          {ease.label}
+          {labelOf(ease)}
         </button>
       {/each}
     </div>

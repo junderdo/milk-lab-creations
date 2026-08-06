@@ -2,13 +2,13 @@
 // struct (robo-cat-ears custom_animation_types.h), validated per robot
 // profile; the binary wire format is derived on demand, never stored.
 import { z } from "zod";
-import { MAX_PAYLOAD_BYTES, MAX_TIME_MS, type RobotProfile } from "./robot-limits.ts";
+import { MAX_PAYLOAD_BYTES, MAX_TIME_MS, type RobotProfile } from "./limits.ts";
 
-// The limits themselves live in robot-limits.ts, which the web editor imports
+// The limits themselves live in limits.ts, which the web editor imports
 // without dragging zod into the browser bundle. Re-exported so this module
 // stays the one place server code asks about the payload contract.
-export { MAX_PAYLOAD_BYTES, MAX_TIME_MS, ROBOT_PROFILES } from "./robot-limits.ts";
-export type { RobotProfile } from "./robot-limits.ts";
+export { MAX_PAYLOAD_BYTES, MAX_TIME_MS, ROBOT_PROFILES } from "./limits.ts";
+export type { RobotProfile } from "./limits.ts";
 
 const uint16 = z.number().int().min(0).max(MAX_TIME_MS);
 
