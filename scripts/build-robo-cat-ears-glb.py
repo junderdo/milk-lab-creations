@@ -12,8 +12,9 @@ Rig (matches firmware channel map in robo-cat-ears/main/servo.h):
 Each articulation node carries glTF extras (three.js userData):
   { "channel": n, "axis": [x,y,z], "neutralDeg": 90 }
 axis is the rotation axis in the node's parent space (unit vector, glTF Y-up).
-Runtime pose: quaternion = axisAngle(axis, sign * radians(angleDeg - 90)).
-Rotation signs must be validated visually (prototype ticket) — firmware semantics:
+Runtime pose: quaternion = axisAngle(axis, radians(angleDeg - 90)) — the axis
+directions already encode the rotation sense validated against the physical
+robot (azimuth axes point down; no runtime sign needed). Firmware semantics:
   ch0: 40 = left ear swivels leftward/outboard   ch2: 140 = right ear rightward/outboard
   ch1: 80 = left ear tilts up                    ch3: 100 = right ear tilts up
 
@@ -37,7 +38,17 @@ STL_DIR = sys.argv[1] if len(sys.argv) > 1 else "/mnt/c/Users/jeffu/Projects/cat
 OUT = sys.argv[2] if len(sys.argv) > 2 else "apps/web/static/models/robo-cat-ears.glb"
 
 SHAFT_R = 6.05          # MG90S rounded case end radius (mm), coaxial with output shaft
-TARGET_FACES = {"headband": 9000, "servos": 4000, "ear": 11000}
+# servos raised from 4000: the assembly's small details (tabs, shafts, horns)
+# read as butchered below ~12k faces in the editor preview
+TARGET_FACES = {"headband": 9000, "servos": 12000, "ear": 11000}
+
+# Manual pivot corrections dialed in visually against the physical robot in
+# the Threlte preview prototype (left-side values, CAD mm Z-up; x mirrors per
+# side): servo assembly pivots further back+up+outboard, ear pivots further
+# up its length. Sum of two tuning rounds; glTF-space equivalents:
+# azimuth (+5.5, +23.0, -13.0), latitude (0, +1.0, +11.5) mm.
+AZ_PIVOT_CORRECTION_MM = np.array([5.5, 13.0, 23.0])
+LAT_PIVOT_CORRECTION_MM = np.array([0.0, -11.5, 1.0])
 
 
 def load(name):
@@ -122,7 +133,13 @@ def main():
         cand = [(-d, p, m) if d[2] < 0 else (d, p, m) for d, p, m in cand]
         cand.sort(key=lambda c: -c[0][0] * sx)
         (az_dir, az_pt, _), (lat_dir, lat_pt, _) = cand
+        # Validated against the physical robot (prototype ticket): both azimuth
+        # rotations run opposite the up-normalized shaft direction.
+        az_dir = -az_dir
         az_pivot, lat_pivot = intersect_in_xz(az_dir, az_pt, lat_dir, lat_pt)
+        mirror = np.array([sx, 1.0, 1.0])
+        az_pivot = az_pivot + AZ_PIVOT_CORRECTION_MM * mirror
+        lat_pivot = lat_pivot + LAT_PIVOT_CORRECTION_MM * mirror
         # Point the latitude axis outboard along the band.
         if lat_dir[0] * sx < 0:
             lat_dir = -lat_dir
