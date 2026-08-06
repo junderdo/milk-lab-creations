@@ -10,9 +10,15 @@ import { withOccRetry } from "./occ.ts";
  * to overwrite) without a second round-trip.
  */
 export class StaleWriteError extends Error {
-  constructor(readonly current: unknown) {
+  // Declared and assigned rather than a `readonly` constructor parameter
+  // property: `dev:server` runs under node's --experimental-strip-types, which
+  // erases types without emitting code and so cannot support that sugar.
+  readonly current: unknown;
+
+  constructor(current: unknown) {
     super("record was changed elsewhere");
     this.name = "StaleWriteError";
+    this.current = current;
   }
 }
 
