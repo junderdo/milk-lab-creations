@@ -22,16 +22,38 @@ export interface SparklineBox {
 export interface SparklineOptions {
   /** Evenly spaced samples across the duration; keyframe times are added on top. */
   samples?: number;
+  /**
+   * Time window to draw, when it isn't just the animation's duration.
+   *
+   * The graph editor draws a little past the last keyframe so the final column
+   * isn't pinned to the canvas edge; the interpolator holds the last pose out
+   * there, so the tail is flat and honest rather than invented.
+   */
+  overMs?: number;
+  /** Top of the angle axis, for a robot whose range isn't the usual 0–180. */
+  maxAngle?: number;
 }
 
 /** Enough to keep elastic overshoot legible at card size without bloating markup. */
 const DEFAULT_SAMPLES = 48;
 
-const MAX_ANGLE = 180;
+const DEFAULT_MAX_ANGLE = 180;
 
 /** Two decimals is below a device pixel at any card size we render. */
 function roundCoord(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * Where an angle sits vertically in a box of `height`: 0° at the bottom, the
+ * robot's maximum at the top.
+ *
+ * Exported because the graph editor has to place its draggable dots on the
+ * curves this module draws. Two copies of this formula is two chances for a dot
+ * to sit beside the line it is supposed to be a handle for.
+ */
+export function angleToY(angle: number, height: number, maxAngle = DEFAULT_MAX_ANGLE): number {
+  return height - (angle / maxAngle) * height;
 }
 
 /**
@@ -59,8 +81,13 @@ interface Plot {
   pose: number[];
 }
 
-function plots(keyframes: Keyframe[], box: SparklineBox, samples: number): Plot[] {
-  const total = durationMs(keyframes);
+function plots(
+  keyframes: Keyframe[],
+  box: SparklineBox,
+  samples: number,
+  overMs: number | undefined,
+): Plot[] {
+  const total = overMs ?? durationMs(keyframes);
   if (total <= 0) {
     // no duration to spread over: hold the one pose across the whole width, so a
     // single-keyframe animation still reads as a card rather than an empty box
@@ -90,15 +117,16 @@ export function channelPaths(
 ): string[] {
   if (keyframes.length === 0) return []; // nothing to sample — `sample` would throw
 
-  const points = plots(keyframes, box, options.samples ?? DEFAULT_SAMPLES);
+  const points = plots(keyframes, box, options.samples ?? DEFAULT_SAMPLES, options.overMs);
   const channels = points.reduce((widest, { pose }) => Math.max(widest, pose.length), 0);
+  const maxAngle = options.maxAngle ?? DEFAULT_MAX_ANGLE;
 
   return Array.from({ length: channels }, (_unused, channel) => {
     let d = "";
     for (const { x, pose } of points) {
       const angle = pose[channel];
       if (angle === undefined) continue; // a pose that doesn't drive this channel leaves a gap
-      const y = roundCoord(box.height - (angle / MAX_ANGLE) * box.height);
+      const y = roundCoord(angleToY(angle, box.height, maxAngle));
       d += `${d === "" ? "M" : "L"}${x} ${y}`;
     }
     return d;

@@ -10,6 +10,7 @@
   Cheap and DOM-only: safe to render many of, safe to render during SSR.
 -->
 <script lang="ts">
+  import { styleFor } from "$lib/animation/channels";
   import type { Keyframe } from "$lib/animation/interpolator";
   import { channelPaths } from "$lib/animation/sparkline";
 
@@ -26,16 +27,6 @@
   // Path coordinates are unitless: the viewBox is stretched to whatever box the
   // caller sizes us into, and non-scaling strokes keep the lines even after it.
   const BOX = { width: 100, height: 100 };
-
-  // Channel order is the rig's (0/1 = left ear azimuth/latitude, 2/3 = right).
-  // Curves overlap constantly, so hue is what separates them; each pair is
-  // light/dark tuned rather than a single colour that washes out in one theme.
-  const CHANNEL_STROKES = [
-    "stroke-sky-600 dark:stroke-sky-400",
-    "stroke-violet-600 dark:stroke-violet-400",
-    "stroke-amber-600 dark:stroke-amber-400",
-    "stroke-emerald-600 dark:stroke-emerald-400",
-  ];
 
   const paths = $derived(channelPaths(keyframes, BOX));
 </script>
@@ -57,7 +48,7 @@
         stroke-linecap="round"
         stroke-linejoin="round"
         vector-effect="non-scaling-stroke"
-        class={CHANNEL_STROKES[channel % CHANNEL_STROKES.length]}
+        class={styleFor(channel).stroke}
       />
     {/each}
   </svg>

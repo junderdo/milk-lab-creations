@@ -117,6 +117,22 @@ describe("channelPaths", () => {
     expect(points(path)).toHaveLength(5);
   });
 
+  it("draws a wider window than the animation when asked, holding the last pose", () => {
+    // the graph editor leaves headroom past the last column; the tail out there
+    // is the final pose held, which is what the robot does
+    const [path] = channelPaths(
+      [kf({ timeMs: 0, angles: [0] }), kf({ timeMs: 1000, angles: [180] })],
+      box,
+      { samples: 3, overMs: 2000 },
+    );
+    if (path === undefined) throw new Error("expected a path");
+    expect(points(path)).toEqual([
+      [0, 100], // t=0, 0°
+      [50, 0], // t=1000, the last keyframe, halfway across the wider window
+      [100, 0], // t=2000, still 180° — held, not extrapolated
+    ]);
+  });
+
   it("draws only the channels the interpolator poses", () => {
     // payloads are validated per robot profile, so ragged angle arrays shouldn't
     // happen — and if one did, inventing a 0° curve for the extra channel would

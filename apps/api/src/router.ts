@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Context } from "./context.ts";
 import { withOccRetry } from "./occ.ts";
+import { DESCRIPTION_MAX, NAME_MAX } from "./limits.ts";
 import {
   derivedScalars,
   packWireFormat,
@@ -20,9 +21,8 @@ const DELETE_BATCH_SIZE = 200;
 const VISIBILITIES = ["private", "unlisted", "public"] as const;
 export type Visibility = (typeof VISIBILITIES)[number];
 
-const NAME_MAX = 100;
 const nameSchema = z.string().trim().min(1).max(NAME_MAX);
-const descriptionSchema = z.string().trim().max(1000);
+const descriptionSchema = z.string().trim().max(DESCRIPTION_MAX);
 
 /**
  * "Remix of ⟨source⟩", truncated so a maxed-out source name still fits.
