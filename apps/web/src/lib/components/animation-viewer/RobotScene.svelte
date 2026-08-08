@@ -12,6 +12,7 @@
   import { T, useTask, useThrelte } from "@threlte/core";
   import { OrbitControls, useGltf } from "@threlte/extras";
   import * as THREE from "three";
+  import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
   import { durationMs, sample, type Keyframe } from "$lib/animation/interpolator";
 
   interface Props {
@@ -49,7 +50,31 @@
   // model out from under the resolved pivots.
   const gltf = useGltf(untrack(() => modelUrl));
   const gltfError = gltf.error;
-  const { advance } = useThrelte();
+  const { advance, scene, renderer } = useThrelte();
+
+  /** How much of the shading comes from the environment rather than the lamps. */
+  const ENV_INTENSITY = 0.4;
+
+  // Image-based fill, standing in for the bounced light a real room would give.
+  // RoomEnvironment is procedural, so this costs no asset fetch — one PMREM
+  // convolution at mount and nothing per frame. It replaces an AmbientLight,
+  // which adds the same value to every surface regardless of which way it
+  // faces and so erases exactly the shape we want to see.
+  $effect(() => {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    const envMap = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
+
+    scene.environment = envMap;
+    scene.environmentIntensity = ENV_INTENSITY;
+
+    return () => {
+      scene.environment = null;
+      envMap.dispose();
+    };
+  });
 
   $effect(() => {
     if ($gltfError) onerror?.();
@@ -103,11 +128,18 @@
     };
   }
 
+  /** Roughly where the robot sits ahead of the camera, for the lights to aim at. */
+  const CAMERA_TO_SUBJECT = 0.35;
+  let aim = $state.raw<THREE.Object3D | undefined>(undefined);
+  let keyLight = $state.raw<THREE.DirectionalLight | undefined>(undefined);
+
   // Dense and unordered: `channel` lives on the pivot rather than being its
   // index, so a rig with sparse or unexpected channel numbers can't produce
   // holes that later reads have to guard.
   let pivots = $state.raw<Pivot[]>([]);
   let target = $state.raw<[number, number, number]>([0, 0.05, 0]);
+  /** The rig's extent, for sizing the key light's shadow camera. */
+  let radius = $state.raw<number | null>(null);
   let posed = false;
 
   // Pivots are found by traversal, not a hardcoded name list: the glb's extras
@@ -120,11 +152,40 @@
     scene.traverse((node) => {
       const pivot = pivotFrom(node);
       if (pivot !== null) found.push(pivot);
+      // glTF carries no shadow flags, so every mesh has to opt in here or the
+      // ears cannot shade the head.
+      if ((node as THREE.Mesh).isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+      }
     });
     pivots = found;
 
-    const center = new THREE.Box3().setFromObject(scene).getCenter(new THREE.Vector3());
+    const box = new THREE.Box3().setFromObject(scene);
+    const center = box.getCenter(new THREE.Vector3());
     target = [center.x, center.y, center.z];
+    radius = box.getBoundingSphere(new THREE.Sphere()).radius;
+  });
+
+  // The rig is ~0.2 units across and the default shadow camera spans 10, which
+  // would spend the whole shadow map on empty space and return mush. Sized here
+  // rather than as props because changing an orthographic camera's frustum does
+  // nothing until its projection matrix is rebuilt.
+  $effect(() => {
+    if (!keyLight || radius === null) return;
+
+    const extent = radius * 1.3;
+    const shadow = keyLight.shadow;
+    shadow.camera.left = -extent;
+    shadow.camera.right = extent;
+    shadow.camera.top = extent;
+    shadow.camera.bottom = -extent;
+    shadow.camera.near = 0.01;
+    shadow.camera.far = keyLight.position.length() + radius * 2;
+    shadow.camera.updateProjectionMatrix();
+    // normalBias over bias: it scales with the surface angle, so the curved
+    // shell doesn't need a bias big enough to detach shadows where parts meet.
+    shadow.normalBias = radius * 0.06;
   });
 
   /** Rest pose: every pivot at its own neutral angle, i.e. no rotation at all. */
@@ -172,6 +233,18 @@
 </script>
 
 <T.PerspectiveCamera makeDefault position={[0.25, 0.18, 0.3]} fov={40}>
+  <!-- Fill and rim hang off the camera so no orbit angle can leave the robot
+       an unreadable silhouette. They aim at `aim` rather than at their own
+       default target: a DirectionalLight points from its position to
+       `light.target`, and that target defaults to an object at the world
+       origin — parenting the lights alone would swing them around the robot
+       while they kept pointing at the same fixed spot. -->
+  <T.Object3D bind:ref={aim} position={[0, 0, -CAMERA_TO_SUBJECT]} />
+  {#if aim}
+    <T.DirectionalLight position={[-1.2, 0.5, 0.2]} intensity={0.55} target={aim} />
+    <T.DirectionalLight position={[0.5, 1, -1.5]} intensity={0.85} target={aim} />
+  {/if}
+
   {#if interactive}
     <!-- clamped so the model can't be orbited under the floor or lost in space -->
     <OrbitControls
@@ -186,9 +259,19 @@
   {/if}
 </T.PerspectiveCamera>
 
-<T.AmbientLight intensity={0.6} />
-<T.DirectionalLight position={[2, 4, 3]} intensity={1.6} />
-<T.DirectionalLight position={[-3, 2, -2]} intensity={0.5} />
+<!-- The key stays in world space on purpose. If it rode the camera along with
+     the other two, the highlights would sit still while the robot turned under
+     them, which reads as the model spinning rather than the viewer moving
+     around it. Orbiting past a fixed key is the cue that there is a there
+     there. -->
+<T.DirectionalLight
+  bind:ref={keyLight}
+  position={[2, 4, 3]}
+  intensity={1.2}
+  castShadow
+  shadow.mapSize.width={1024}
+  shadow.mapSize.height={1024}
+/>
 
 {#if $gltf}
   <T is={$gltf.scene} />
