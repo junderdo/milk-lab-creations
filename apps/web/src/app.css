@@ -3,6 +3,23 @@
 /* Tark UI components use class-based dark mode */
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * When the animation editor is an app shell — preview and timeline sharing one
+ * fixed height, divided by a drag handle — rather than a page that stacks and
+ * scrolls.
+ *
+ * Height is in the question because that is what the split actually spends: a
+ * maximised window on a scaled laptop display reports ~910 CSS px wide, which a
+ * width-only `lg` reads as a phone and hands a 4:3 preview tall enough to push
+ * the timeline off-screen. So a mouse earns the shell from 48rem, while 64rem
+ * keeps it for every pointer — a big touchscreen had it before and still does.
+ *
+ * Kept in step by hand with EDITOR_SHELL_MEDIA_QUERY in
+ * `$lib/editor/timeline-height` — the pane maths reads the same query to know
+ * whether its number is being applied at all.
+ */
+@custom-variant editor-shell (@media (min-height: 32rem) and ((min-width: 64rem) or ((min-width: 48rem) and (pointer: fine))));
+
 /* The document itself, so overscroll, scrollbars and native controls agree with
    the theme the app paints below them. */
 :root {

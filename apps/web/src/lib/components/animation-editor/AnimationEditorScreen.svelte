@@ -54,6 +54,7 @@
   import {
     clampTimelineHeight,
     DEFAULT_TIMELINE_HEIGHT,
+    EDITOR_SHELL_MEDIA_QUERY,
     localTimelineHeightStorage,
     MIN_TIMELINE_HEIGHT,
     readTimelineHeight,
@@ -275,20 +276,21 @@
   const paneBudget = $derived(shellHeight - headerHeight - dividerHeight - footerChrome);
   const maxTimelineHeight = $derived(clampTimelineHeight(paneBudget, paneBudget));
 
-  // The `lg` breakpoint as a query rather than a hard-coded 1024: below it the
-  // page stacks and scrolls, the height is not applied at all, and re-clamping
-  // it against an aspect-ratio'd preview would corrupt a good stored value.
+  // The same query the `editor-shell` variant applies the height with: outside
+  // it the page stacks and scrolls, the height is not applied at all, and
+  // re-clamping it against an aspect-ratio'd preview would corrupt a good
+  // stored value.
   let shellLayout = $state(false);
 
   onMount(() => {
     // Unclamped: the panes have not been measured yet, and clamping against a
     // zero budget would throw away a perfectly good stored height.
     timelineHeight = readTimelineHeight(heightStorage);
-    const wide = globalThis.matchMedia("(min-width: 64rem)");
-    shellLayout = wide.matches;
+    const shell = globalThis.matchMedia(EDITOR_SHELL_MEDIA_QUERY);
+    shellLayout = shell.matches;
     const onChange = (event: MediaQueryListEvent) => (shellLayout = event.matches);
-    wide.addEventListener("change", onChange);
-    return () => wide.removeEventListener("change", onChange);
+    shell.addEventListener("change", onChange);
+    return () => shell.removeEventListener("change", onChange);
   });
 
   // Covers both the restore above and a window shortened later: whatever the
@@ -482,9 +484,10 @@
 <svelte:window onkeydown={onHistoryKeydown} onpagehide={() => draftWriter.flush()} />
 <svelte:document onvisibilitychange={flushDraftIfHidden} />
 
-<!-- An app shell above `lg` — the preview takes what header and footer leave;
-     below it the page stacks and scrolls again, per spec §3.1. -->
-<main bind:clientHeight={shellHeight} class="flex flex-col lg:min-h-0 lg:flex-1" inert={dialogOpen}>
+<!-- An app shell wherever there is room for one — the preview takes what
+     header and footer leave; without the room the page stacks and scrolls
+     again, per spec §3.1. -->
+<main bind:clientHeight={shellHeight} class="flex flex-col editor-shell:min-h-0 editor-shell:flex-1" inert={dialogOpen}>
   <header
     bind:clientHeight={headerHeight}
     class="shrink-0 space-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-800"
@@ -650,13 +653,14 @@
     {/if}
     <!-- Only where the page stacks: on a phone the preview and the graph are
          competing for the same screen, and the graph is the one being edited.
-         Above `lg` they each have their own pane and the divider settles it. -->
+         In the shell they each have their own pane and the divider settles
+         it. -->
     <button
       type="button"
       onclick={() => (previewCollapsed = !previewCollapsed)}
       aria-expanded={!previewCollapsed}
       aria-controls="editor-preview"
-      class="inline-flex items-center gap-1 text-sm text-gray-500 lg:hidden dark:text-gray-400"
+      class="inline-flex items-center gap-1 text-sm text-gray-500 editor-shell:hidden dark:text-gray-400"
     >
       <ChevronDown class="h-4 w-4 transition-transform {previewCollapsed ? '-rotate-90' : ''}" />
       {previewCollapsed ? "Show preview" : "Hide preview"}
@@ -668,8 +672,8 @@
        shift; until then the curves hold the space. -->
   <section
     id="editor-preview"
-    class="relative aspect-[4/3] overflow-hidden bg-gray-100 lg:aspect-auto lg:min-h-0 lg:flex-1 dark:bg-gray-900 {previewCollapsed
-      ? 'hidden lg:block'
+    class="relative aspect-[4/3] max-h-[50dvh] overflow-hidden bg-gray-100 editor-shell:aspect-auto editor-shell:max-h-none editor-shell:min-h-0 editor-shell:flex-1 dark:bg-gray-900 {previewCollapsed
+      ? 'hidden editor-shell:block'
       : ''}"
   >
     {#if Viewer && modelUrl && !viewerFailed && editor.keyframes.length > 0}
@@ -696,8 +700,8 @@
     {/if}
   </section>
 
-  <!-- Only where there is a fixed shell to divide. Below `lg` the page stacks
-       and scrolls, so there is no space for the two panes to trade. -->
+  <!-- Only where there is a fixed shell to divide. Stacked, the page scrolls,
+       so there is no space for the two panes to trade. -->
   <!-- A focusable `separator` is the ARIA window splitter, which *is*
        interactive — the rule these suppress only holds for the decorative kind. -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -719,7 +723,7 @@
     onkeydown={onResizeKeydown}
     ondblclick={() => setHeight(DEFAULT_TIMELINE_HEIGHT)}
     title="Drag to resize — double-click to reset"
-    class="group hidden h-2.5 shrink-0 cursor-row-resize touch-none items-center justify-center border-y border-gray-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gray-500 lg:flex dark:border-gray-800 {resizing
+    class="group hidden h-2.5 shrink-0 cursor-row-resize touch-none items-center justify-center border-y border-gray-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gray-500 editor-shell:flex dark:border-gray-800 {resizing
       ? 'bg-gray-200 dark:bg-gray-800'
       : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-900 dark:hover:bg-gray-800'}"
   >
@@ -732,7 +736,7 @@
 
   <footer
     bind:clientHeight={footerHeight}
-    class="min-w-0 shrink-0 border-t border-gray-200 px-4 py-3 lg:border-t-0 dark:border-gray-800"
+    class="min-w-0 shrink-0 border-t border-gray-200 px-4 py-3 editor-shell:border-t-0 dark:border-gray-800"
   >
     <AnimationTimeline
       keyframes={editor.keyframes}
