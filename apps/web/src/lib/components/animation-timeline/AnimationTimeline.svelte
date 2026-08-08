@@ -488,6 +488,21 @@
         style="left:{x(tick)}px">{(tick / 1000).toFixed(tickMs < 1000 ? 2 : 1)}s</span
       >
     {/each}
+
+    <!-- The grabbable end of the playhead. Drawn only: the ruler under it is
+         already the scrub surface, so the handle says "drag me" without
+         needing a gesture of its own. -->
+    <div
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-y-0 z-10 -translate-x-1/2"
+      style="left:{x(Math.min(playheadMs, viewMs))}px"
+    >
+      <div
+        class="h-full bg-red-500 [clip-path:polygon(0_0,100%_0,100%_55%,50%_100%,0_55%)] {coarse
+          ? 'w-4'
+          : 'w-2.5'}"
+      ></div>
+    </div>
   </div>
 
   <!-- The ease editor is a sibling of the canvas, not a child: `touch-none`

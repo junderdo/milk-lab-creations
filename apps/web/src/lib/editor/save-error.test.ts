@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ANIMATION_CAP_MESSAGE } from "../quota";
 import { saveFailureFrom } from "./save-error";
 
 const current = {
@@ -33,6 +34,7 @@ describe("saveFailureFrom", () => {
     expect(saveFailureFrom(clientError({ code: "CONFLICT", current: { id: "anim-1" } }))).toEqual({
       kind: "message",
       message: "animation was changed elsewhere",
+      retryable: true,
     });
     expect(saveFailureFrom(clientError({ code: "CONFLICT" })).kind).toBe("message");
   });
@@ -40,13 +42,20 @@ describe("saveFailureFrom", () => {
   it("reports any other rejection by its message", () => {
     expect(
       saveFailureFrom(clientError({ code: "BAD_REQUEST" }, "invalid animation payload")),
-    ).toEqual({ kind: "message", message: "invalid animation payload" });
+    ).toEqual({ kind: "message", message: "invalid animation payload", retryable: true });
+  });
+
+  it("turns the animation cap into its own sentence, and does not offer a retry", () => {
+    expect(
+      saveFailureFrom(clientError({ code: "FORBIDDEN" }, "animation limit reached (30)")),
+    ).toEqual({ kind: "message", message: ANIMATION_CAP_MESSAGE, retryable: false });
   });
 
   it("has something to say about a thrown value that is not an error at all", () => {
     expect(saveFailureFrom("boom")).toEqual({
       kind: "message",
       message: "Could not save. Please try again.",
+      retryable: true,
     });
     expect(saveFailureFrom(undefined).kind).toBe("message");
   });

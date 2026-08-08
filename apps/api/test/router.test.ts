@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { MAX_ANIMATIONS_PER_USER } from "../src/limits.ts";
 import { packWireFormat, type AnimationPayload } from "../src/payload.ts";
-import { appRouter, MAX_ANIMATIONS_PER_USER, type Visibility } from "../src/router.ts";
+import { appRouter, type Visibility } from "../src/router.ts";
 import { makeAnimationRow, makeContext, ROBO_CAT_EARS, uuid, validPayload } from "./helpers.ts";
 
 const SUB = "11111111-1111-4111-8111-111111111111";
@@ -182,6 +183,20 @@ describe("quota", () => {
         payload: validPayload(),
       }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("reports the count and the cap, counting a remix against the remixer", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const theirs = await seedAnimation(makeContext({ db: ctx.fake, sub: OTHER_SUB }), {
+      visibility: "public",
+      name: "Theirs",
+    });
+    const caller = callerFor(ctx);
+
+    // their animation is not mine, so the cap starts untouched
+    expect(await caller.animations.quota()).toEqual({ count: 0, limit: MAX_ANIMATIONS_PER_USER });
+    await caller.animations.remix({ id: theirs.id });
+    expect(await caller.animations.quota()).toEqual({ count: 1, limit: MAX_ANIMATIONS_PER_USER });
   });
 });
 

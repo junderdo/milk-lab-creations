@@ -444,7 +444,7 @@
       editor =
         failure.kind === "conflict"
           ? editor.saveConflicted(failure.server)
-          : editor.saveFailed(failure.message);
+          : editor.saveFailed(failure.message, failure.retryable);
     }
   }
 
@@ -633,7 +633,11 @@
       >
         <span>{editor.errorMessage}</span>
         <span class="flex gap-3">
-          <button type="button" class="underline" onclick={() => void save()}>Try again</button>
+          {#if editor.errorRetryable}
+            <button type="button" class="underline" onclick={() => void save()}>Try again</button>
+          {:else}
+            <a href={resolve("/my")} class="underline">My animations</a>
+          {/if}
           <button
             type="button"
             class="underline"

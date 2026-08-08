@@ -148,9 +148,20 @@ describe("save", () => {
 
   it("reports a failed save and lets it be retried", () => {
     const failed = opened.setName("Renamed").saveStarted().saveFailed("Network unavailable");
-    expect(failed.status).toEqual({ kind: "failed", message: "Network unavailable" });
+    expect(failed.status).toEqual({
+      kind: "failed",
+      message: "Network unavailable",
+      retryable: true,
+    });
     expect(failed.errorMessage).toBe("Network unavailable");
+    expect(failed.errorRetryable).toBe(true);
     expect(failed.saveStarted().saving).toBe(true);
+  });
+
+  it("marks a failure that resending cannot fix", () => {
+    const failed = opened.setName("Renamed").saveStarted().saveFailed("No room left", false);
+    expect(failed.errorRetryable).toBe(false);
+    expect(failed.errorMessage).toBe("No room left");
   });
 
   it("clears a failure without touching the document", () => {

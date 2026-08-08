@@ -5,6 +5,7 @@
   import { keyframesFromPayload } from "$lib/animation/payload";
   import { modelUrlFor } from "$lib/animation/robots";
   import { limitsFor } from "$lib/editor/document";
+  import { ANIMATION_CAP_MESSAGE, atAnimationCap, isAnimationCapError } from "$lib/quota";
   import { trpc } from "$lib/trpc";
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
@@ -45,6 +46,8 @@
   let remixing = $state(false);
   let remixError: string | null = $state(null);
 
+  const atCap = $derived(data.quota !== null && atAnimationCap(data.quota.count));
+
   // Viewable is remixable, but only a robot with a validation profile can be
   // edited — so a fork of one without goes to its own page rather than into an
   // editor that would refuse to open.
@@ -62,8 +65,12 @@
           ? resolve("/animations/[id]/edit", { id: fork.id })
           : resolve("/animations/[id]", { id: fork.id }),
       );
-    } catch {
-      remixError = "Could not remix this animation. Please try again.";
+    } catch (thrown) {
+      // the cap is a real answer, not a glitch: saying "try again" to a user
+      // who is out of room sends them round a loop that cannot end
+      remixError = isAnimationCapError(thrown)
+        ? ANIMATION_CAP_MESSAGE
+        : "Could not remix this animation. Please try again.";
       remixing = false;
     }
   }
@@ -87,8 +94,9 @@
           <button
             type="button"
             onclick={remix}
-            disabled={remixing}
-            class="shrink-0 rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+            disabled={remixing || atCap}
+            title={atCap ? ANIMATION_CAP_MESSAGE : undefined}
+            class="shrink-0 rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
           >
             {remixing ? "Remixing…" : "Remix"}
           </button>
@@ -104,6 +112,12 @@
       {/if}
       {#if remixError}
         <p class="text-sm text-red-600 dark:text-red-400" role="alert">{remixError}</p>
+      {:else if atCap}
+        <!-- the disabled button's tooltip never opens on a touch device, so the
+             reason it is disabled is on the page too -->
+        <p class="text-sm text-amber-700 dark:text-amber-400">
+          {ANIMATION_CAP_MESSAGE}
+        </p>
       {/if}
     </header>
 
