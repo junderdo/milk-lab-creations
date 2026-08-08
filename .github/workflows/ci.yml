@@ -67,7 +67,7 @@ jobs:
       # the Prisma client is gitignored generated code; without this the Lambda
       # bundler can't resolve apps/api/src/generated/prisma
       - run: pnpm --filter @milklab/api generate
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-west-2
