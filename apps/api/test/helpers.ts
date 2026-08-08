@@ -222,12 +222,17 @@ export class FakeDb {
 export function makeContext(overrides?: {
   db?: FakeDb;
   sub?: string | null;
+  username?: string;
   fetchProfile?: Context["fetchProfile"];
 }): Context & { fake: FakeDb } {
   const fake = overrides?.db ?? new FakeDb();
+  const sub = overrides?.sub;
   return {
     db: fake as unknown as Db,
-    user: overrides?.sub === null || overrides?.sub === undefined ? null : { sub: overrides.sub },
+    user:
+      sub === null || sub === undefined
+        ? null
+        : { sub, username: overrides?.username ?? `google_${sub}` },
     fetchProfile:
       overrides?.fetchProfile ?? (async () => ({ email: "jeff@example.com", displayName: "Jeff" })),
     fake,

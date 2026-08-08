@@ -50,6 +50,24 @@ describe("auth & JIT provisioning", () => {
     expect(ctx.fake.users).toHaveLength(1);
   });
 
+  it("asks the directory for the pool username, not the sub", async () => {
+    // a Google-federated user is `google_<id>` in the pool, and AdminGetUser
+    // does not answer for a sub at all — asking by sub fails every first
+    // authed request, which reads to the client as "not signed in"
+    let askedFor: string | null = null;
+    const ctx = makeContext({
+      sub: SUB,
+      username: "google_112156352747254181745",
+      fetchProfile: async (username) => {
+        askedFor = username;
+        return { email: "jeff@example.com", displayName: "Jeff" };
+      },
+    });
+
+    await callerFor(ctx).users.me();
+    expect(askedFor).toBe("google_112156352747254181745");
+  });
+
   it("does not re-provision on later requests", async () => {
     const ctx = makeContext({
       sub: SUB,
