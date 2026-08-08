@@ -29,6 +29,7 @@
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import AnimationTimeline from "$lib/components/animation-timeline/AnimationTimeline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
+  import type { ViewerEditing } from "$lib/components/animation-viewer/editing";
   import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
   import EditorDialog from "./EditorDialog.svelte";
   import type { RemixProvenance } from "$lib/animation/remix";
@@ -414,6 +415,58 @@
     selectedIndex = null;
   }
 
+  // --- In-3D editing (spec §3.2) ----------------------------------------------
+  //
+  // The viewer reports gestures; the document rules live here with every other
+  // edit path. A ring drag edits the column under the playhead, auto-keying one
+  // into existence on its first past-slop move when none is there.
+
+  /** The 3D view's selected ear, as the channel pair the timeline emphasises. */
+  let highlightChannels = $state<number[] | null>(null);
+  let timeline = $state<{ pause: () => void }>();
+  /** The column the active ring drag writes — resolved on its first move. */
+  let ringIndex: number | null = null;
+
+  const hasColumnAtPlayhead = $derived(
+    editor.keyframes.some((frame) => frame.timeMs === Math.round(playheadMs)),
+  );
+
+  function ringAngle(channel: number, angle: number) {
+    if (ringIndex === null) {
+      const at = Math.round(playheadMs);
+      const existing = editor.keyframes.findIndex((frame) => frame.timeMs === at);
+      if (existing >= 0) {
+        ringIndex = existing;
+      } else {
+        if (editor.atKeyframeCap) return;
+        ringIndex = insertionIndexFor(editor.keyframes, at);
+        // the insert carries the drag's own gesture id, so the auto-keyed
+        // frame and the angle change fall to a single Ctrl+Z
+        editor = editor.addKeyframeAt(at, {
+          kind: "gesture",
+          id: `angle:${ringIndex}:${channel}`,
+        });
+      }
+      selectedIndex = ringIndex;
+    }
+    editor = editor.setAngle(ringIndex, channel, angle);
+  }
+
+  function ringCommitted() {
+    ringIndex = null;
+    editor = editor.editCommitted();
+  }
+
+  const viewerEditing = $derived<ViewerEditing>({
+    maxAngle: openedLimits.maxAngle,
+    // at the cap a drag that would need to auto-key has nowhere to write
+    canEditAngles: !editor.atKeyframeCap || hasColumnAtPlayhead,
+    ondragstart: () => timeline?.pause(),
+    onangle: ringAngle,
+    oncommit: ringCommitted,
+    onselect: (channels) => (highlightChannels = channels),
+  });
+
   /**
    * Run whatever save the editor has queued.
    *
@@ -687,6 +740,7 @@
         {modelUrl}
         bind:currentTimeMs={playheadMs}
         transport={false}
+        editing={viewerEditing}
         onready={() => (viewerReady = true)}
         onerror={() => (viewerFailed = true)}
       />
@@ -744,9 +798,11 @@
     class="min-w-0 shrink-0 border-t border-gray-200 px-4 py-3 editor-shell:border-t-0 dark:border-gray-800"
   >
     <AnimationTimeline
+      bind:this={timeline}
       keyframes={editor.keyframes}
       {limits}
       {labels}
+      {highlightChannels}
       graphHeight={timelineHeight}
       bind:playheadMs
       bind:selectedIndex

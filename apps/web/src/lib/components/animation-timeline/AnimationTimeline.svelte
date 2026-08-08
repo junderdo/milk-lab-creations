@@ -37,6 +37,12 @@
     labels: ChannelLabel[];
     playheadMs: number;
     selectedIndex: number | null;
+    /**
+     * Channels to emphasise — the 3D view's selected ear. Highlight, don't
+     * drive: everything else dims but stays fully interactive, and the
+     * visibility chips are never touched (spec §3.2).
+     */
+    highlightChannels?: number[] | null;
     /** Live counter in the chrome — amber as the robot's ceiling approaches. */
     nearCap: boolean;
     atCap: boolean;
@@ -62,6 +68,7 @@
     labels,
     playheadMs = $bindable(0),
     selectedIndex = $bindable(null),
+    highlightChannels = null,
     nearCap,
     atCap,
     graphHeight = null,
@@ -147,6 +154,14 @@
   );
   const pose = $derived(keyframes.length > 0 ? sample(keyframes, playheadMs) : []);
   const selected = $derived(selectedIndex === null ? null : (keyframes[selectedIndex] ?? null));
+
+  // No highlight when every highlighted channel is chip-hidden: highlight
+  // never resurrects a curve, and dimming everything would emphasise nothing.
+  const highlightActive = $derived(
+    highlightChannels !== null && highlightChannels.some((channel) => isVisible(channel)),
+  );
+  const dimmed = (channel: number) => highlightActive && !highlightChannels?.includes(channel);
+  const emphasised = (channel: number) => highlightActive && highlightChannels?.includes(channel);
 
   const x = (timeMs: number) => (timeMs / viewMs) * width;
   // the same mapping the curves are drawn with, offset by the grip strip, so a
@@ -255,7 +270,8 @@
   let playing = $state(false);
   let frameHandle = 0;
 
-  function pause() {
+  /** Exported: a ring drag in the 3D view pauses playback before it edits. */
+  export function pause() {
     playing = false;
     cancelAnimationFrame(frameHandle);
   }
@@ -564,9 +580,10 @@
               <path
                 {d}
                 fill="none"
-                stroke-width="1.75"
+                stroke-width={emphasised(channel) ? 3 : 1.75}
                 stroke-linejoin="round"
                 vector-effect="non-scaling-stroke"
+                opacity={dimmed(channel) ? 0.35 : 1}
                 class={styleFor(channel).stroke}
               />
             {/if}
@@ -619,7 +636,9 @@
               aria-label="{label.full} at keyframe {index + 1}: {angle}° — drag to change"
               class="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize touch-none rounded-full border-2 bg-white dark:bg-gray-950 {styleFor(
                 channel,
-              ).border} {coarse ? 'pointer-events-none' : ''}"
+              ).border} {coarse ? 'pointer-events-none' : ''} {dimmed(channel)
+                ? 'opacity-35'
+                : ''}"
               style="left:{x(frame.timeMs)}px; top:{y(angle)}px"
             ></button>
           {/if}
