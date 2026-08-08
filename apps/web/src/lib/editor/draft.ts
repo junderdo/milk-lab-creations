@@ -20,7 +20,7 @@ import {
   type EditorDocument,
 } from "./document";
 
-export const DRAFT_VERSION = 1;
+const DRAFT_VERSION = 1;
 
 /** Long enough that a drag or a typed word is one write, short enough to survive a crash. */
 export const DRAFT_DEBOUNCE_MS = 1000;
@@ -52,13 +52,16 @@ export interface DraftBase {
 }
 
 /**
- * Nothing to ask about, or a draft to offer.
+ * A draft worth asking about.
  *
- * `stale` means the draft was written on top of a version the server has since
- * moved past — the dialog says so more loudly, but restoring is still allowed:
- * the collision itself is adjudicated at save time by the conflict dialog.
+ * `stale` means it was written on top of a version the server has since moved
+ * past — the dialog says so more loudly, but restoring is still allowed: the
+ * collision itself is adjudicated at save time by the conflict dialog.
  */
-export type DraftOffer = { kind: "none" } | { kind: "offer"; draft: Draft; stale: boolean };
+export interface DraftOffer {
+  draft: Draft;
+  stale: boolean;
+}
 
 const KEY_PREFIX = "milklab:editor-draft:";
 
@@ -78,7 +81,7 @@ export function localDraftStorage(): DraftStorage {
   return { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 }
 
-export function timeoutSchedule(): DraftSchedule {
+function timeoutSchedule(): DraftSchedule {
   let pending: ReturnType<typeof setTimeout> | undefined;
   return {
     after(delayMs, run) {
@@ -217,14 +220,14 @@ function sameVersion(base: Date | null, server: Date | null): boolean {
  * prompts. Anything else is the caller's to ask about, and stays in storage
  * until they answer.
  */
-export function takeDraft(storage: DraftStorage, key: string, server: DraftBase): DraftOffer {
+export function takeDraft(storage: DraftStorage, key: string, server: DraftBase): DraftOffer | null {
   let raw: string | null;
   try {
     raw = storage.getItem(key);
   } catch {
-    return { kind: "none" };
+    return null;
   }
-  if (raw === null) return { kind: "none" };
+  if (raw === null) return null;
 
   const draft = draftFrom(raw);
   if (draft === null || documentsEqual(draft.document, server.document)) {
@@ -233,8 +236,8 @@ export function takeDraft(storage: DraftStorage, key: string, server: DraftBase)
     } catch {
       // it stays until the next entry, where it lands here again
     }
-    return { kind: "none" };
+    return null;
   }
 
-  return { kind: "offer", draft, stale: !sameVersion(draft.baseUpdatedAt, server.updatedAt) };
+  return { draft, stale: !sameVersion(draft.baseUpdatedAt, server.updatedAt) };
 }

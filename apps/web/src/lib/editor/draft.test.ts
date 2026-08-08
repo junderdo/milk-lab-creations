@@ -15,6 +15,16 @@ import {
   type DraftStorage,
 } from "./draft";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parsedObject(raw: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(raw);
+  if (!isRecord(parsed)) throw new Error(`not a draft envelope: ${raw}`);
+  return parsed;
+}
+
 const ease = { easeInType: 1, easeOutType: 1, easeInMs: 150, easeOutMs: 150 } as const;
 
 const SERVER_UPDATED_AT = new Date("2026-08-05T12:00:00.000Z");
@@ -95,7 +105,7 @@ function writerOn(storage: DraftStorage, schedule: DraftSchedule, at = 1_000) {
 function envelopeIn(storage: ReturnType<typeof fakeStorage>): Record<string, unknown> {
   const raw = storage.items.get(KEY);
   if (raw === undefined) throw new Error("expected a draft to have been written");
-  return JSON.parse(raw) as Record<string, unknown>;
+  return parsedObject(raw);
 }
 
 describe("draft keys", () => {
@@ -207,7 +217,6 @@ describe("taking a draft on entry", () => {
     const offer = takeDraft(storage, KEY, server);
 
     expect(offer).toEqual({
-      kind: "offer",
       draft: {
         document: edited(serverDocument, "Renamed"),
         baseUpdatedAt: SERVER_UPDATED_AT,
@@ -221,15 +230,12 @@ describe("taking a draft on entry", () => {
 
   it("flags a draft written on top of an older server version", () => {
     const storage = stored(envelopeFor(edited(serverDocument, "Renamed"), new Date("2026-08-01")));
-    const offer = takeDraft(storage, KEY, server);
-
-    expect(offer.kind).toBe("offer");
-    expect(offer.kind === "offer" && offer.stale).toBe(true);
+    expect(takeDraft(storage, KEY, server)?.stale).toBe(true);
   });
 
   it("deletes a draft the server copy already matches, with no prompt", () => {
     const storage = stored(envelopeFor(serverDocument));
-    expect(takeDraft(storage, KEY, server)).toEqual({ kind: "none" });
+    expect(takeDraft(storage, KEY, server)).toBeNull();
     expect(storage.items.has(KEY)).toBe(false);
   });
 
@@ -242,17 +248,17 @@ describe("taking a draft on entry", () => {
       JSON.stringify({ ...envelopeFor(serverDocument), document: { name: "Empty", payload: {} } }),
     ]) {
       const storage = fakeStorage({ [KEY]: junk });
-      expect(takeDraft(storage, KEY, server)).toEqual({ kind: "none" });
+      expect(takeDraft(storage, KEY, server)).toBeNull();
       expect(storage.items.has(KEY)).toBe(false);
     }
   });
 
   it("offers nothing when there is no draft, or when storage will not answer", () => {
-    expect(takeDraft(fakeStorage(), KEY, server)).toEqual({ kind: "none" });
+    expect(takeDraft(fakeStorage(), KEY, server)).toBeNull();
 
     const refusing = stored(envelopeFor(edited(serverDocument, "Renamed")));
     refusing.fail();
-    expect(takeDraft(refusing, KEY, server)).toEqual({ kind: "none" });
+    expect(takeDraft(refusing, KEY, server)).toBeNull();
   });
 
   it("round-trips what the writer wrote", () => {
@@ -264,14 +270,14 @@ describe("taking a draft on entry", () => {
     schedule.elapse();
     const offer = takeDraft(storage, KEY, server);
 
-    expect(offer.kind === "offer" && offer.draft.document).toEqual(document);
-    expect(offer.kind === "offer" && offer.draft.savedAt).toEqual(new Date(1_000));
+    expect(offer?.draft.document).toEqual(document);
+    expect(offer?.draft.savedAt).toEqual(new Date(1_000));
   });
 
   it("treats a draft on a never-saved animation as fresh, not stale", () => {
     const storage = stored(envelopeFor(edited(serverDocument, "Renamed"), null));
     const offer = takeDraft(storage, KEY, { document: serverDocument, updatedAt: null });
 
-    expect(offer.kind === "offer" && offer.stale).toBe(false);
+    expect(offer?.stale).toBe(false);
   });
 });

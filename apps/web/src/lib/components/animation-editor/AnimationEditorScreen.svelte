@@ -40,6 +40,8 @@
     type DraftOffer,
   } from "$lib/editor/draft";
   import { AnimationEditor, type LoadedAnimation } from "$lib/editor/editor-state";
+  import { leaveDecision, type LeaveTarget } from "$lib/editor/leave-guard";
+  import { humanizedSince } from "$lib/format/relative-time";
   import { saveFailureFrom } from "$lib/editor/save-error";
   import { trpc } from "$lib/trpc";
 
@@ -79,7 +81,7 @@
 
   // Answered before the document is allowed to move: writing a draft over the
   // one being offered would destroy the very work the dialog is offering back.
-  let draftOffer = $state<DraftOffer>({ kind: "none" });
+  let draftOffer = $state<DraftOffer | null>(null);
   let draftChecked = $state(false);
 
   onMount(() => {
@@ -92,7 +94,7 @@
 
   $effect(() => {
     const { document, dirty, baseUpdatedAt } = editor;
-    if (!draftChecked || draftOffer.kind === "offer") return;
+    if (!draftChecked || draftOffer !== null) return;
     // clean means there is nothing a draft could recover — including after a
     // save, which is one of the two moments a draft is meant to disappear
     if (dirty) draftWriter.documentChanged(document, baseUpdatedAt);
@@ -108,41 +110,43 @@
   }
 
   function restoreDraft() {
-    if (draftOffer.kind !== "offer") return;
+    if (draftOffer === null) return;
     editor = editor.draftRestored(draftOffer.draft.document);
-    draftOffer = { kind: "none" };
+    draftOffer = null;
   }
 
   function discardDraft() {
     draftWriter.discard();
-    draftOffer = { kind: "none" };
+    draftOffer = null;
   }
 
-  let leaveTo = $state<URL | null>(null);
-  let leaving = false;
+  let leaveTarget = $state<LeaveTarget | null>(null);
+  let confirmedLeave = false;
 
   beforeNavigate((navigation) => {
-    if (leaving || !editor.dirty) return;
-    if (navigation.willUnload) {
-      // cancelling an unload is what raises the browser's own prompt; a dialog
-      // of ours would be rendered into a page that may already be going
-      navigation.cancel();
-      return;
-    }
-    const url = navigation.to?.url;
-    if (url === undefined) return;
+    const decision = leaveDecision({
+      dirty: editor.dirty,
+      confirmed: confirmedLeave,
+      willUnload: navigation.willUnload,
+      to: navigation.to?.url ?? null,
+      viaHistory: navigation.type === "popstate",
+    });
+    if (decision.kind === "allow") return;
     navigation.cancel();
-    leaveTo = url;
+    if (decision.kind === "ask") leaveTarget = decision.leave;
   });
 
   function leaveAnyway() {
-    const url = leaveTo;
-    leaveTo = null;
-    if (url === null) return;
-    leaving = true;
+    const target = leaveTarget;
+    leaveTarget = null;
+    if (target === null) return;
+    confirmedLeave = true;
+    // the cancel put the editor's entry back on the stack, so a Back has to be
+    // answered with a Back — navigating to the same URL would stack a new entry
+    if (target.viaHistory) history.back();
     // already a resolved URL — it is the destination the guard just cancelled
     // eslint-disable-next-line svelte/no-navigation-without-resolve
-    void goto(url);
+    else void goto(target.url);
   }
 
   /** Take an undo/redo result and go and show what it moved. */
@@ -203,7 +207,7 @@
   // decision about the document, and a Tab key that reaches the timeline behind
   // it would let the document move while the question is still open.
   const dialogOpen = $derived(
-    draftOffer.kind === "offer" || editor.conflict !== null || leaveTo !== null,
+    draftOffer !== null || editor.conflict !== null || leaveTarget !== null,
   );
 
   const primaryButtonClasses =
@@ -438,28 +442,22 @@
   </div>
 </main>
 
-{#if draftOffer.kind === "offer"}
+{#if draftOffer !== null}
   <!--
     Before editing begins, and only when the draft says something the server
     copy does not. Restoring a stale draft is still allowed: what it collides
     with is settled at save time by the conflict dialog below, not here.
   -->
-  <EditorDialog title="You have unsaved changes on this device">
-    <p class="text-sm text-gray-600 dark:text-gray-400">
-      Left over from {draftOffer.draft.savedAt.toLocaleString()}.
-      {#if draftOffer.stale}
-        This animation has been changed elsewhere since then, so restoring may bring back work that
-        is out of date — you will be asked again when you save.
-      {/if}
-    </p>
-    <div class="flex flex-wrap justify-end gap-3">
-      <button type="button" onclick={discardDraft} class={secondaryButtonClasses}>
-        Discard draft
-      </button>
-      <button type="button" onclick={restoreDraft} class={primaryButtonClasses}>
-        Restore draft
-      </button>
-    </div>
+  <EditorDialog
+    title="You have unsaved changes from {humanizedSince(draftOffer.draft.savedAt)}"
+    confirm={{ label: "Restore draft", onclick: restoreDraft }}
+    dismiss={{ label: "Discard draft", onclick: discardDraft }}
+  >
+    They were left on this device and never saved.
+    {#if draftOffer.stale}
+      This animation has been changed elsewhere since then, so restoring may bring back work that is
+      out of date — you will be asked again when you save.
+    {/if}
   </EditorDialog>
 {/if}
 
@@ -469,34 +467,24 @@
     hand, so "load newest" needs no refetch — and the realistic blast radius is
     one person in two tabs.
   -->
-  <EditorDialog title="This animation was changed elsewhere">
-    <p class="text-sm text-gray-600 dark:text-gray-400">
-      Probably another tab or device. Saving now would overwrite
-      <b class="font-medium">{editor.conflict.name}</b>, saved
-      {editor.conflict.updatedAt.toLocaleString()}.
-    </p>
-    <div class="flex flex-wrap justify-end gap-3">
-      <button type="button" onclick={discardMine} class={secondaryButtonClasses}>
-        Discard mine, load newest
-      </button>
-      <button type="button" onclick={() => void overwrite()} class={primaryButtonClasses}>
-        Overwrite
-      </button>
-    </div>
+  <EditorDialog
+    title="This animation was changed elsewhere"
+    confirm={{ label: "Overwrite", onclick: () => void overwrite() }}
+    dismiss={{ label: "Discard mine, load newest", onclick: discardMine }}
+  >
+    Probably another tab or device. Saving now would overwrite
+    <b class="font-medium">{editor.conflict.name}</b>, saved
+    {editor.conflict.updatedAt.toLocaleString()}.
   </EditorDialog>
 {/if}
 
-{#if leaveTo !== null}
-  <EditorDialog title="You have unsaved changes">
-    <p class="text-sm text-gray-600 dark:text-gray-400">
-      They are kept as a draft on this device, so you can pick them up here again — but they have
-      not been saved.
-    </p>
-    <div class="flex flex-wrap justify-end gap-3">
-      <button type="button" onclick={leaveAnyway} class={secondaryButtonClasses}>Leave</button>
-      <button type="button" onclick={() => (leaveTo = null)} class={primaryButtonClasses}>
-        Stay
-      </button>
-    </div>
+{#if leaveTarget !== null}
+  <EditorDialog
+    title="You have unsaved changes"
+    confirm={{ label: "Stay", onclick: () => (leaveTarget = null) }}
+    dismiss={{ label: "Leave", onclick: leaveAnyway }}
+  >
+    They are kept as a draft on this device, so you can pick them up here again — but they have not
+    been saved.
   </EditorDialog>
 {/if}
