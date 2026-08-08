@@ -4,6 +4,7 @@
   import { resolve } from "$app/paths";
   import { keyframesFromPayload } from "$lib/animation/payload";
   import { modelUrlFor } from "$lib/animation/robots";
+  import { limitsFor } from "$lib/editor/document";
   import { trpc } from "$lib/trpc";
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
@@ -44,6 +45,11 @@
   let remixing = $state(false);
   let remixError: string | null = $state(null);
 
+  // Viewable is remixable, but only a robot with a validation profile can be
+  // edited — so a fork of one without goes to its own page rather than into an
+  // editor that would refuse to open.
+  const editable = $derived(limitsFor(animation.robot?.slug) !== undefined);
+
   // Eager fork: the copy happens server-side on click and we land in the editor
   // on it — remixing is a way of starting to create, not a way of collecting.
   async function remix() {
@@ -51,7 +57,11 @@
     remixError = null;
     try {
       const fork = await trpc().animations.remix.mutate({ id: animation.id });
-      await goto(resolve("/animations/[id]/edit", { id: fork.id }));
+      await goto(
+        editable
+          ? resolve("/animations/[id]/edit", { id: fork.id })
+          : resolve("/animations/[id]", { id: fork.id }),
+      );
     } catch {
       remixError = "Could not remix this animation. Please try again.";
       remixing = false;

@@ -504,8 +504,6 @@
       </div>
     </div>
 
-    <!-- Provenance follows the fork into the editor: renaming a remix is the
-         first thing most people do, and this is what survives that. -->
     <RemixAttribution {provenance} />
 
     <!-- Said from the moment the editor opens nameless, so a disabled Save is

@@ -1,10 +1,9 @@
 /**
  * Where an animation came from, as one value.
  *
- * The API answers this in two fields — `remixedFromId` stays on the record even
- * when `remixedFrom` cannot be resolved — because that pair is what tells "not a
- * remix" apart from "remixed from something you can't see". Every caller wants
- * the second reading, so the pair collapses here once rather than in each view.
+ * The API answers in two fields so that "not a remix" can be told apart from
+ * "remixed from something you can't see". That reading is the only one any view
+ * wants, so the pair collapses here once rather than in each of them.
  */
 
 export interface RemixProvenance {

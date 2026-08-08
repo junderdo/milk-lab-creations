@@ -1,7 +1,6 @@
 <!--
   "Remixed from ⟨source⟩" — the same line on the detail page and in the editor
-  header, so a fork says where it came from wherever you meet it. Renders
-  nothing at all for an original.
+  header, so a fork says where it came from wherever you meet it.
 -->
 <script lang="ts">
   import { resolve } from "$app/paths";
@@ -9,20 +8,19 @@
 
   interface Props {
     provenance: RemixProvenance;
-    class?: string;
   }
 
-  let { provenance, class: className = "" }: Props = $props();
+  let { provenance }: Props = $props();
   const origin = $derived(remixOriginOf(provenance));
 </script>
 
-{#if origin.kind !== "none"}
-  <p class="text-sm text-gray-600 dark:text-gray-400 {className}">
+{#if origin.kind === "known"}
+  <p class="text-sm text-gray-600 dark:text-gray-400">
     Remixed from
-    {#if origin.kind === "known"}
-      <a href={resolve("/animations/[id]", { id: origin.id })} class="underline">{origin.name}</a>
-    {:else}
-      <span class="italic">an original that is no longer available</span>
-    {/if}
+    <a href={resolve("/animations/[id]", { id: origin.id })} class="underline">{origin.name}</a>
+  </p>
+{:else if origin.kind === "unavailable"}
+  <p class="text-sm text-gray-600 dark:text-gray-400">
+    Remixed from <span class="italic">an original that is no longer available</span>
   </p>
 {/if}

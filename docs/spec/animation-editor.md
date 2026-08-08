@@ -210,8 +210,9 @@ description enforce their length limits at the input (`maxlength`, counter on de
 
 ## 5. Remix flow
 
-Decided in full and **built**, except that the editor-header attribution waits on the editor routes
-(§6) — the Remix button lands on the fork's detail page until then.
+Decided in full and **built**. The Remix button lands on the fork's edit route, and the editor header
+carries the same attribution line the detail page does — except for a robot with no validation
+profile, whose fork lands on its own detail page because there is no editor for it to open.
 
 - **Rule: viewable = remixable.** Public, unlisted-via-link, and your own (remixing your own doubles as
   duplicate). Same visibility check `byId` already performs.

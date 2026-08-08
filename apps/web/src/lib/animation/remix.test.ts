@@ -12,8 +12,6 @@ describe("remixOriginOf", () => {
     ).toEqual({ kind: "known", id: "src-1", name: "Ear wiggle" });
   });
 
-  // deleted and private are deliberately the same answer: saying which would
-  // leak the existence of an animation the viewer is not allowed to see
   it("falls back to unavailable when the source cannot be resolved", () => {
     expect(remixOriginOf({ remixedFromId: "src-1", remixedFrom: null })).toEqual({
       kind: "unavailable",
