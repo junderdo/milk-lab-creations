@@ -7,7 +7,8 @@ overwrite: each entry records an edit, why it exists, and how to check it is sti
 
 Vendored at **v1.2.0** (`2ffb184ffbb752faa664c0b204f3c9241b1428e9`). Skills tracked in
 `skills-lock.json`; locally authored skills (`ask-engineering`, `ask-product`,
-`check-questions`, `publish-map`, `to-brief`) are not vendored and are not listed here.
+`check-questions`, `publish-map`, `run-app`, `to-brief`) are not vendored and are not listed
+here.
 
 ## Upgrading
 
