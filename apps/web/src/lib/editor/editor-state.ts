@@ -302,8 +302,12 @@ export class AnimationEditor {
     return this.edited(setEase(this.document, this.limits, index, patch), { kind: "immediate" });
   }
 
-  addKeyframeAt(timeMs: number): AnimationEditor {
-    return this.edited(addKeyframeAt(this.document, this.limits, timeMs), { kind: "immediate" });
+  /**
+   * `intent` lets an auto-keying drag pass the gesture id its `setAngle` calls
+   * will use, so the insert and the drag collapse into one undo step.
+   */
+  addKeyframeAt(timeMs: number, intent: EditIntent = { kind: "immediate" }): AnimationEditor {
+    return this.edited(addKeyframeAt(this.document, this.limits, timeMs), intent);
   }
 
   removeKeyframe(index: number): AnimationEditor {

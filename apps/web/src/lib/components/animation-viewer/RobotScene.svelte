@@ -14,6 +14,9 @@
   import * as THREE from "three";
   import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
   import { durationMs, sample, type Keyframe } from "$lib/animation/interpolator";
+  import type { ViewerEditing } from "./editing";
+  import EarGizmos from "./EarGizmos.svelte";
+  import { pivotFrom, type Pivot } from "./pivots";
 
   interface Props {
     keyframes: Keyframe[];
@@ -24,8 +27,10 @@
     loop: boolean;
     /** Show the rig's as-modelled rest pose instead of sampling the animation. */
     neutral: boolean;
-    /** Orbit + zoom, clamped. Off for the editor's fixed camera. */
+    /** Orbit + zoom, clamped — the same behaviour on every surface. */
     interactive: boolean;
+    /** In-3D editing gizmos (spec §3.2). Only the editor passes it. */
+    editing?: ViewerEditing;
     onpose?: (angles: number[]) => void;
     /** Fired once the rig has been posed for the first time. */
     onready?: () => void;
@@ -40,6 +45,7 @@
     loop,
     neutral,
     interactive,
+    editing,
     onpose,
     onready,
     onerror,
@@ -98,35 +104,6 @@
     raf = requestAnimationFrame(loopFrame);
     return () => cancelAnimationFrame(raf);
   });
-
-  /** A rig joint: which channel drives it, and the axis it turns about. */
-  interface Pivot {
-    channel: number;
-    node: THREE.Object3D;
-    axis: THREE.Vector3;
-    neutralDeg: number;
-  }
-
-  /**
-   * glTF extras are a boundary: three.js types `userData` as `Record<string, any>`,
-   * so the rig contract is checked here rather than trusted. A node that doesn't
-   * carry a well-formed `{ channel, axis }` simply isn't a pivot.
-   */
-  function pivotFrom(node: THREE.Object3D): Pivot | null {
-    const { channel, axis, neutralDeg } = node.userData;
-    if (typeof channel !== "number" || !Number.isInteger(channel) || channel < 0) return null;
-    if (!Array.isArray(axis) || axis.length !== 3) return null;
-    const [x, y, z] = axis;
-    if (typeof x !== "number" || typeof y !== "number" || typeof z !== "number") return null;
-
-    return {
-      channel,
-      node,
-      // rotation sense is baked into the axis vector — no runtime sign factor
-      axis: new THREE.Vector3(x, y, z),
-      neutralDeg: typeof neutralDeg === "number" ? neutralDeg : 90,
-    };
-  }
 
   /** Roughly where the robot sits ahead of the camera, for the lights to aim at. */
   const CAMERA_TO_SUBJECT = 0.35;
@@ -204,6 +181,11 @@
     }
   }
 
+  /** A ring drag owns the pointer for its gesture; orbit sits it out. */
+  let orbitLocked = $state(false);
+  /** The angles posed this frame — where the gizmos' markers ride. */
+  let posedAngles = $state.raw<number[]>([]);
+
   useTask((delta) => {
     if (pivots.length === 0) return;
 
@@ -220,6 +202,7 @@
       }
       const angles = sample(keyframes, currentTimeMs);
       poseFrom(angles);
+      posedAngles = angles;
       onpose?.(angles);
     }
 
@@ -249,6 +232,7 @@
     <!-- clamped so the model can't be orbited under the floor or lost in space -->
     <OrbitControls
       {target}
+      enabled={!orbitLocked}
       enableDamping
       enablePan={false}
       minDistance={0.15}
@@ -275,4 +259,13 @@
 
 {#if $gltf}
   <T is={$gltf.scene} />
+  {#if editing !== undefined && pivots.length > 0}
+    <EarGizmos
+      scene={$gltf.scene}
+      {pivots}
+      {editing}
+      angles={posedAngles}
+      ondraglock={(locked) => (orbitLocked = locked)}
+    />
+  {/if}
 {/if}

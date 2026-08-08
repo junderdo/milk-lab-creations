@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { AnimationEditor, type LoadedAnimation } from "./editor-state";
-import { keyframesOf, limitsFor, newDocument } from "./document";
+import { insertionIndexFor, keyframesOf, limitsFor, newDocument } from "./document";
 
 const limits = limitsFor("robo-cat-ears");
 if (limits === undefined) throw new Error("robo-cat-ears must have a validation profile");
@@ -308,6 +308,51 @@ describe("undo", () => {
     const returned = opened.setAngle(1, 0, 60).setAngle(1, 0, 40).editCommitted();
     expect(returned.dirty).toBe(false);
     expect(returned.canUndo).toBe(false);
+  });
+});
+
+describe("auto-key: a drag that inserts its own keyframe", () => {
+  // a ring drag with no keyframe under the playhead: insert at the playhead,
+  // then drag the angle — one gesture, one undo step
+  const at = 250;
+  const index = insertionIndexFor(keyframesOf(opened.document), at);
+  const gesture = { kind: "gesture", id: `angle:${index}:0` } as const;
+
+  it("collapses the insert and the angle changes into one step", () => {
+    const dragged = opened
+      .addKeyframeAt(at, gesture)
+      .setAngle(index, 0, 120)
+      .setAngle(index, 0, 130)
+      .editCommitted();
+    expect(dragged.keyframeCount).toBe(3);
+    expect(keyframesOf(dragged.document)[index]?.angles[0]).toBe(130);
+
+    const undone = dragged.undone();
+    expect(undone.keyframeCount).toBe(2);
+    expect(undone.dirty).toBe(false);
+    expect(undone.canUndo).toBe(false);
+  });
+
+  it("keeps the insert as a step even when the drag returns to its seed", () => {
+    const seed = keyframesOf(opened.addKeyframeAt(at).document)[index]?.angles[0];
+    if (seed === undefined) throw new Error("the insert must land at the computed index");
+
+    const returned = opened.addKeyframeAt(at, gesture).setAngle(index, 0, seed).editCommitted();
+    expect(returned.keyframeCount).toBe(3);
+    expect(returned.dirty).toBe(true); // a keyframe was in fact created
+    expect(returned.undone().keyframeCount).toBe(2);
+  });
+
+  it("does not let a following drag on the same channel join the insert's step", () => {
+    const dragged = opened
+      .addKeyframeAt(at, gesture)
+      .setAngle(index, 0, 120)
+      .editCommitted()
+      .setAngle(index, 0, 150)
+      .editCommitted();
+
+    expect(keyframesOf(dragged.undone().document)[index]?.angles[0]).toBe(120);
+    expect(dragged.undone().undone().keyframeCount).toBe(2);
   });
 });
 

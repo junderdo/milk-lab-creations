@@ -13,6 +13,7 @@
   import { untrack } from "svelte";
   import { Canvas } from "@threlte/core";
   import { durationMs, type Keyframe } from "$lib/animation/interpolator";
+  import type { ViewerEditing } from "./editing";
   import RobotScene from "./RobotScene.svelte";
 
   interface Props {
@@ -24,6 +25,8 @@
     transport?: boolean;
     /** Orbit + zoom. */
     interactive?: boolean;
+    /** In-3D editing gizmos (spec §3.2). Only the editor passes it. */
+    editing?: ViewerEditing;
     onpose?: (angles: number[]) => void;
     /** Fired once the rig has been posed for the first time. */
     onready?: () => void;
@@ -37,6 +40,7 @@
     currentTimeMs = $bindable(0),
     transport = true,
     interactive = true,
+    editing,
     onpose,
     onready,
     onerror,
@@ -69,10 +73,27 @@
     playing = false;
     currentTimeMs = Number(value);
   }
+
+  // A ring drag edits the pose at the playhead, so it ends the reduced-motion
+  // neutral hold the same way a play or scrub does — otherwise the document
+  // would move while the robot visibly didn't.
+  const sceneEditing = $derived(
+    editing === undefined
+      ? undefined
+      : {
+          ...editing,
+          ondragstart: () => {
+            neutral = false;
+            editing.ondragstart();
+          },
+        },
+  );
 </script>
 
 <div class="flex h-full w-full flex-col">
-  <div class="min-h-0 flex-1">
+  <!-- touch-action off while gizmos are live, set here rather than trusting
+       OrbitControls' side effect: a ring drag must not become a page scroll -->
+  <div class="min-h-0 flex-1 {editing === undefined ? '' : 'touch-none'}">
     <Canvas renderMode="manual">
       {#key modelUrl}
         <RobotScene
@@ -83,6 +104,7 @@
           loop={transport}
           {neutral}
           {interactive}
+          editing={sceneEditing}
           {onpose}
           {onready}
           {onerror}

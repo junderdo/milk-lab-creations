@@ -51,3 +51,22 @@ export function styleFor(channel: number): ChannelStyle {
   if (style === undefined) throw new Error("CHANNEL_STYLES must not be empty");
   return style;
 }
+
+/**
+ * The same hues as hex, for three.js materials the Tailwind classes can't
+ * reach. Kept beside CHANNEL_STYLES so the ring around an ear and the curve in
+ * the timeline cannot drift apart: sky/violet/amber/emerald, 600s on the light
+ * canvas, 400s on the dark one.
+ */
+const CHANNEL_HEX: { light: string; dark: string }[] = [
+  { light: "#0284c7", dark: "#38bdf8" },
+  { light: "#7c3aed", dark: "#a78bfa" },
+  { light: "#d97706", dark: "#fbbf24" },
+  { light: "#059669", dark: "#34d399" },
+];
+
+export function hexFor(channel: number, dark: boolean): string {
+  const hex = CHANNEL_HEX[channel % CHANNEL_HEX.length];
+  if (hex === undefined) throw new Error("CHANNEL_HEX must not be empty");
+  return dark ? hex.dark : hex.light;
+}
