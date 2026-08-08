@@ -9,6 +9,7 @@ import {
   easeTypesFor,
   limitsFor,
   removeKeyframe,
+  revealOf,
   setAngle,
   setDescription,
   setEase,
@@ -208,6 +209,57 @@ describe("removeKeyframe", () => {
   it("keeps the last keyframe — a payload with none is invalid", () => {
     const single = docOf(frame(0, [90, 90, 90, 90]));
     expect(removeKeyframe(single, 0)).toBe(single);
+  });
+});
+
+describe("revealOf", () => {
+  it("points at the column an angle change landed on", () => {
+    expect(revealOf(doc, setAngle(doc, limits, 1, 2, 30))).toEqual({
+      kind: "keyframe",
+      index: 1,
+      timeMs: 500,
+    });
+  });
+
+  it("follows a retimed column to where it now sits", () => {
+    expect(revealOf(doc, setTime(doc, limits, 1, 700))).toEqual({
+      kind: "keyframe",
+      index: 1,
+      timeMs: 700,
+    });
+  });
+
+  it("points at an inserted column", () => {
+    expect(revealOf(doc, addKeyframeAt(doc, limits, 250))).toEqual({
+      kind: "keyframe",
+      index: 1,
+      timeMs: 250,
+    });
+  });
+
+  it("points at what took a deleted column's place, never off the end", () => {
+    expect(revealOf(doc, removeKeyframe(doc, 2))).toEqual({
+      kind: "keyframe",
+      index: 1,
+      timeMs: 500,
+    });
+  });
+
+  it("names the field when the change was text, not motion", () => {
+    expect(revealOf(doc, setName(doc, "Other"))).toEqual({ kind: "field", field: "name" });
+    expect(revealOf(doc, setDescription(doc, "words"))).toEqual({
+      kind: "field",
+      field: "description",
+    });
+  });
+
+  it("has nothing to reveal when the documents match", () => {
+    expect(revealOf(doc, doc)).toBeNull();
+  });
+
+  it("prefers the motion change when text and keyframes both moved", () => {
+    const both = setName(setAngle(doc, limits, 2, 0, 10), "Other");
+    expect(revealOf(doc, both)).toEqual({ kind: "keyframe", index: 2, timeMs: 1000 });
   });
 });
 

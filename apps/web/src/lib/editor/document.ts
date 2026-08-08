@@ -130,6 +130,41 @@ export function documentsEqual(a: EditorDocument, b: EditorDocument): boolean {
   );
 }
 
+/**
+ * Where a change between two documents happened — what undo should show.
+ *
+ * Undo that silently rewrites something off-screen is undo the user cannot
+ * trust, so every step can say where it landed. This is a diff rather than
+ * something recorded alongside the step because it has to work in both
+ * directions: the same function tells redo where to look.
+ */
+export type Reveal =
+  | { kind: "keyframe"; index: number; timeMs: number }
+  | { kind: "field"; field: "name" | "description" }
+  | null;
+
+export function revealOf(from: EditorDocument, to: EditorDocument): Reveal {
+  const before = keyframesOf(from);
+  const after = keyframesOf(to);
+  const at = after.findIndex((frame, index) => {
+    const other = before[index];
+    return other === undefined || !keyframesEqual(frame, other);
+  });
+
+  const changed = at === -1 ? undefined : after[at];
+  if (changed !== undefined) return { kind: "keyframe", index: at, timeMs: changed.timeMs };
+
+  // a column was deleted off the end: reveal what is now last, not the gap
+  const lastIndex = after.length - 1;
+  const last = after[lastIndex];
+  if (after.length < before.length && last !== undefined) {
+    return { kind: "keyframe", index: lastIndex, timeMs: last.timeMs };
+  }
+  if (from.name !== to.name) return { kind: "field", field: "name" };
+  if (from.description !== to.description) return { kind: "field", field: "description" };
+  return null;
+}
+
 function withKeyframes(document: EditorDocument, keyframes: Keyframe[]): EditorDocument {
   return { ...document, payload: { ...document.payload, keyframes } };
 }

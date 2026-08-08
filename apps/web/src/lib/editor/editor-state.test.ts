@@ -13,6 +13,8 @@ if (limits === undefined) throw new Error("robo-cat-ears must have a validation 
 
 const LOADED_AT = new Date("2026-08-05T12:00:00.000Z");
 
+const ease = { easeInType: 1, easeOutType: 1, easeInMs: 150, easeOutMs: 150 } as const;
+
 function record(overrides: Partial<LoadedAnimation> = {}): LoadedAnimation {
   return {
     id: "anim-1",
@@ -21,22 +23,8 @@ function record(overrides: Partial<LoadedAnimation> = {}): LoadedAnimation {
     payload: {
       schemaVersion: 1,
       keyframes: [
-        {
-          timeMs: 0,
-          angles: [90, 90, 90, 90],
-          easeInType: 1,
-          easeOutType: 1,
-          easeInMs: 150,
-          easeOutMs: 150,
-        },
-        {
-          timeMs: 500,
-          angles: [40, 80, 140, 100],
-          easeInType: 1,
-          easeOutType: 1,
-          easeInMs: 150,
-          easeOutMs: 150,
-        },
+        { timeMs: 0, angles: [90, 90, 90, 90], ...ease },
+        { timeMs: 500, angles: [40, 80, 140, 100], ...ease },
       ],
     },
     updatedAt: LOADED_AT,
@@ -173,6 +161,125 @@ describe("save", () => {
   });
 });
 
+describe("undo", () => {
+  it("has nothing to undo on a freshly opened animation", () => {
+    expect(opened.canUndo).toBe(false);
+    expect(opened.canRedo).toBe(false);
+    expect(opened.undone()).toBe(opened);
+    expect(opened.redone()).toBe(opened);
+  });
+
+  it("treats one drag as one step, whatever it moved through", () => {
+    const dragged = opened
+      .setAngle(1, 0, 60)
+      .setAngle(1, 0, 75)
+      .setAngle(1, 0, 41)
+      .editCommitted();
+
+    const undone = dragged.undone();
+    expect(keyframesOf(undone.document)[1]?.angles[0]).toBe(40);
+    expect(undone.dirty).toBe(false);
+    expect(undone.canUndo).toBe(false);
+    expect(undone.redone().document).toEqual(dragged.document);
+  });
+
+  it("keeps two separate drags as two steps", () => {
+    const twice = opened
+      .setAngle(1, 0, 41)
+      .editCommitted()
+      .setAngle(1, 0, 42)
+      .editCommitted();
+
+    expect(keyframesOf(twice.undone().document)[1]?.angles[0]).toBe(41);
+  });
+
+  it("coalesces a typing burst and breaks on the pause", () => {
+    let clock = 0;
+    const editor = AnimationEditor.open(record(), limits, () => clock);
+
+    let typed = editor.setName("Ear wiggl");
+    clock = 200;
+    typed = typed.setName("Ear wiggle!");
+    expect(typed.undone().document.name).toBe("Ear wiggle");
+
+    clock = 5000;
+    const later = typed.setName("Ear wiggle!!");
+    expect(later.undone().document.name).toBe("Ear wiggle!");
+  });
+
+  it("steps ease edits individually, so two eases can be compared with undo", () => {
+    const eased = opened.setEase(0, { easeOutType: 3 }).setEase(0, { easeOutType: 2 });
+    expect(keyframesOf(eased.undone().document)[0]?.easeOutType).toBe(3);
+    expect(keyframesOf(eased.undone().undone().document)[0]?.easeOutType).toBe(1);
+  });
+
+  it("steps adding and removing keyframes individually", () => {
+    const built = opened.addKeyframeAt(250).removeKeyframe(0);
+    expect(built.keyframeCount).toBe(2);
+    expect(built.undone().keyframeCount).toBe(3);
+    expect(built.undone().undone().keyframeCount).toBe(2);
+    expect(built.undone().undone().dirty).toBe(false);
+  });
+
+  it("says where to look, without ever making the view a step", () => {
+    const dragged = opened.setAngle(1, 2, 30).editCommitted();
+    expect(dragged.reveal).toBeNull(); // editing is its own reveal — the finger is already there
+
+    const undone = dragged.undone();
+    expect(undone.reveal).toEqual({ kind: "keyframe", index: 1, timeMs: 500 });
+    expect(undone.redone().reveal).toEqual({ kind: "keyframe", index: 1, timeMs: 500 });
+    // and the next edit stops pointing at a change that is no longer the latest
+    expect(undone.setName("Other").reveal).toBeNull();
+  });
+
+  it("clears redo once a new edit branches off an undo", () => {
+    const branched = opened.setAngle(1, 0, 41).editCommitted().undone().setAngle(1, 1, 70);
+    expect(branched.canRedo).toBe(false);
+  });
+
+  it("drops a drag that ended where it started", () => {
+    const returned = opened.setAngle(1, 0, 60).setAngle(1, 0, 40).editCommitted();
+    expect(returned.dirty).toBe(false);
+    expect(returned.canUndo).toBe(false);
+  });
+});
+
+describe("undo across a save", () => {
+  const savedAt = new Date("2026-08-05T13:00:00.000Z");
+  const saved = opened
+    .setAngle(1, 0, 41)
+    .editCommitted()
+    .saveStarted()
+    .saveSucceeded(
+      record({
+        payload: {
+          schemaVersion: 1,
+          keyframes: [
+            { timeMs: 0, angles: [90, 90, 90, 90], ...ease },
+            { timeMs: 500, angles: [41, 80, 140, 100], ...ease },
+          ],
+        },
+        updatedAt: savedAt,
+      }),
+    );
+
+  it("keeps the stack across a save — saving is not a barrier", () => {
+    expect(saved.dirty).toBe(false);
+    expect(saved.canUndo).toBe(true);
+  });
+
+  it("goes dirty again when undone past the save point, and clean when redone back", () => {
+    const undone = saved.undone();
+    expect(keyframesOf(undone.document)[1]?.angles[0]).toBe(40);
+    expect(undone.dirty).toBe(true);
+    expect(undone.redone().dirty).toBe(false);
+  });
+
+  it("guards a save made after undoing past the save point with the newest updatedAt", () => {
+    expect(saved.undone().saveStarted().pendingRequest?.expectedUpdatedAt).toEqual(savedAt);
+  });
+});
+
 describe("conflict", () => {
   const newer = record({
     name: "Changed in the other tab",
@@ -214,6 +321,26 @@ describe("conflict", () => {
     expect(discarded.setName("Third go").saveStarted().pendingRequest?.expectedUpdatedAt).toEqual(
       newer.updatedAt,
     );
+  });
+
+  it("holds undo still until the conflict is answered", () => {
+    // the dialog covers the canvas but not the keyboard: undoing behind it would
+    // move the document out from under an Overwrite that still resends what the
+    // server rejected
+    expect(conflicted.canUndo).toBe(false);
+    expect(conflicted.undone()).toBe(conflicted);
+    expect(conflicted.redone()).toBe(conflicted);
+  });
+
+  it("gives undo back once the conflict is resolved", () => {
+    expect(conflicted.serverAdopted().canUndo).toBe(true);
+  });
+
+  it("makes discarding mine undoable — the stack is what stops that being a loss", () => {
+    const discarded = conflicted.serverAdopted();
+    expect(discarded.canUndo).toBe(true);
+    expect(discarded.undone().document.name).toBe("Renamed");
+    expect(discarded.undone().dirty).toBe(true);
   });
 
   it("ignores save transitions that do not belong to the state it is in", () => {

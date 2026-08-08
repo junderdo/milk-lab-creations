@@ -7,15 +7,16 @@
 
   All document state lives in `AnimationEditor` (`$lib/editor/editor-state`),
   which is immutable — every edit reassigns `editor`, which is both how Svelte
-  sees the change and how undo and drafts will later get a history for free.
-  This file is the wiring: pointer events in, one mutation out, and the two
-  dialogs a save can produce.
+  sees the change and where the undo stack gets its steps. This file is the
+  wiring: pointer events in, one mutation out, and the two dialogs a save can
+  produce.
 
   View state — playhead, selection, channel visibility — deliberately stays out
   of the editor. It is not part of the document, so it is not dirty, not saved
-  and (later) not undoable.
+  and not undoable; undo only moves it as a side effect, to show what it did.
 -->
 <script lang="ts">
+  import { Redo2, Undo2 } from "@lucide/svelte";
   import { onMount, untrack } from "svelte";
   import { resolve } from "$app/paths";
   import { channelLabelsFor, modelUrlFor } from "$lib/animation/robots";
@@ -60,6 +61,41 @@
   let playheadMs = $state(0);
   let selectedIndex = $state<number | null>(null);
 
+  let nameInput: HTMLInputElement | undefined = $state();
+  let descriptionInput: HTMLTextAreaElement | undefined = $state();
+
+  /** Take an undo/redo result and go and show what it moved. */
+  function applyHistoryMove(moved: AnimationEditor) {
+    if (moved === editor) return;
+    const reveal = moved.reveal;
+    editor = moved;
+
+    if (reveal === null) return;
+    if (reveal.kind === "keyframe") {
+      selectedIndex = reveal.index;
+      playheadMs = reveal.timeMs;
+      return;
+    }
+    const field = reveal.field === "name" ? nameInput : descriptionInput;
+    field?.focus();
+  }
+
+  function onHistoryKeydown(event: KeyboardEvent) {
+    // Deliberately intercepted even inside the name and description fields: the
+    // text is part of the document, typing is already an undo step, and letting
+    // the browser's own field-level undo run alongside would give one gesture
+    // two conflicting histories.
+    if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+    const key = event.key.toLowerCase();
+    if (key === "z") {
+      event.preventDefault();
+      applyHistoryMove(event.shiftKey ? editor.redone() : editor.undone());
+    } else if (key === "y") {
+      event.preventDefault();
+      applyHistoryMove(editor.redone());
+    }
+  }
+
   // Same lazy-chunk treatment as the detail page: the viewer is ~150-200 kB of
   // three.js and the editor is usable before it arrives.
   let Viewer: typeof AnimationViewer | null = $state(null);
@@ -80,6 +116,9 @@
   });
 
   const showPlaceholder = $derived(!viewerReady || viewerFailed);
+
+  const historyButtonClasses =
+    "rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800";
 
   function addKeyframe(timeMs: number) {
     if (editor.atKeyframeCap) return;
@@ -137,6 +176,7 @@
 </script>
 
 <svelte:head><title>Editing {editor.document.name}</title></svelte:head>
+<svelte:window onkeydown={onHistoryKeydown} />
 
 <main class="px-4 py-8">
   <div class="mx-auto max-w-5xl space-y-6">
@@ -145,11 +185,13 @@
         <div class="min-w-0 flex-1 space-y-1">
           <label class="sr-only" for="animation-name">Name</label>
           <input
+            bind:this={nameInput}
             id="animation-name"
             type="text"
             maxlength={NAME_MAX}
             value={editor.document.name}
             oninput={(event) => (editor = editor.setName(event.currentTarget.value))}
+            onblur={() => (editor = editor.editCommitted())}
             placeholder="Name this animation"
             class="w-full rounded-md border border-transparent bg-transparent text-2xl font-bold text-gray-900 hover:border-gray-300 focus:border-gray-400 focus:outline-none dark:text-white dark:hover:border-gray-700"
           />
@@ -161,6 +203,30 @@
         </div>
 
         <div class="flex shrink-0 items-center gap-3">
+          <!-- Buttons as well as shortcuts: this is the only place the stack
+               is visible at all, and a pointer has no Ctrl+Z. -->
+          <span class="flex items-center gap-1">
+            <button
+              type="button"
+              onclick={() => applyHistoryMove(editor.undone())}
+              disabled={!editor.canUndo}
+              title="Undo"
+              aria-label="Undo"
+              class={historyButtonClasses}
+            >
+              <Undo2 class="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onclick={() => applyHistoryMove(editor.redone())}
+              disabled={!editor.canRedo}
+              title="Redo"
+              aria-label="Redo"
+              class={historyButtonClasses}
+            >
+              <Redo2 class="h-4 w-4" />
+            </button>
+          </span>
           <span class="text-sm text-gray-500 dark:text-gray-400">
             {#if editor.saving}
               Saving…
@@ -190,11 +256,13 @@
       <div class="space-y-1">
         <label class="sr-only" for="animation-description">Description</label>
         <textarea
+          bind:this={descriptionInput}
           id="animation-description"
           rows="2"
           maxlength={DESCRIPTION_MAX}
           value={editor.document.description}
           oninput={(event) => (editor = editor.setDescription(event.currentTarget.value))}
+          onblur={() => (editor = editor.editCommitted())}
           placeholder="Describe it (optional)"
           class="w-full rounded-md border border-gray-300 bg-transparent p-2 text-sm text-gray-700 focus:outline-none dark:border-gray-700 dark:text-gray-300"
         ></textarea>
@@ -267,6 +335,7 @@
           onease={(index, patch) => (editor = editor.setEase(index, patch))}
           onremove={removeKeyframe}
           onadd={addKeyframe}
+          oncommit={() => (editor = editor.editCommitted())}
         />
       </section>
     </div>

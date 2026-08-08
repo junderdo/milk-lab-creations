@@ -24,6 +24,7 @@ import {
   documentsEqual,
   keyframesOf,
   removeKeyframe,
+  revealOf,
   setAngle,
   setDescription,
   setEase,
@@ -31,9 +32,11 @@ import {
   setTime,
   type EasePatch,
   type EditorDocument,
+  type Reveal,
   type RobotLimits,
   type SaveRequest,
 } from "./document";
+import { DocumentHistory, type EditIntent } from "./history";
 
 /** The animation record the editor opens on, and gets back from a save. */
 export interface LoadedAnimation {
@@ -65,7 +68,11 @@ export class AnimationEditor {
   readonly limits: RobotLimits;
   readonly document: EditorDocument;
   readonly status: SaveStatus;
+  /** Where the last undo or redo landed; `null` after an ordinary edit. */
+  readonly reveal: Reveal;
   private readonly saved: SavedSnapshot;
+  private readonly history: DocumentHistory;
+  private readonly now: () => number;
 
   private constructor(
     animationId: string,
@@ -73,15 +80,32 @@ export class AnimationEditor {
     document: EditorDocument,
     saved: SavedSnapshot,
     status: SaveStatus,
+    history: DocumentHistory,
+    reveal: Reveal,
+    now: () => number,
   ) {
     this.animationId = animationId;
     this.limits = limits;
     this.document = document;
     this.saved = saved;
     this.status = status;
+    this.history = history;
+    this.reveal = reveal;
+    this.now = now;
   }
 
-  static open(record: LoadedAnimation, limits: RobotLimits): AnimationEditor {
+  /**
+   * Open an animation for editing.
+   *
+   * `now` is injected because undo's typing coalescence is defined in terms of
+   * a pause, and a rule about elapsed time that cannot be tested at arbitrary
+   * speeds is a rule nobody can check.
+   */
+  static open(
+    record: LoadedAnimation,
+    limits: RobotLimits,
+    now: () => number = Date.now,
+  ): AnimationEditor {
     const document = documentFromRecord(record);
     return new AnimationEditor(
       record.id,
@@ -89,16 +113,40 @@ export class AnimationEditor {
       document,
       { document, updatedAt: record.updatedAt },
       { kind: "idle" },
+      DocumentHistory.empty(),
+      null,
+      now,
     );
   }
 
-  private with(document: EditorDocument, saved: SavedSnapshot, status: SaveStatus) {
-    return new AnimationEditor(this.animationId, this.limits, document, saved, status);
+  private with(
+    document: EditorDocument,
+    saved: SavedSnapshot,
+    status: SaveStatus,
+    history: DocumentHistory = this.history,
+    reveal: Reveal = null,
+  ) {
+    return new AnimationEditor(
+      this.animationId,
+      this.limits,
+      document,
+      saved,
+      status,
+      history,
+      reveal,
+      this.now,
+    );
   }
 
   /** An edit leaves the save machine alone — saving while typing is allowed. */
-  private edited(document: EditorDocument): AnimationEditor {
-    return document === this.document ? this : this.with(document, this.saved, this.status);
+  private edited(document: EditorDocument, intent: EditIntent): AnimationEditor {
+    if (document === this.document) return this;
+    return this.with(
+      document,
+      this.saved,
+      this.status,
+      this.history.record(this.document, document, intent, this.now()),
+    );
   }
 
   get keyframes(): Keyframe[] {
@@ -148,31 +196,105 @@ export class AnimationEditor {
   }
 
   setName(name: string): AnimationEditor {
-    return this.edited(setName(this.document, name));
+    return this.edited(setName(this.document, name), { kind: "typing", field: "name" });
   }
 
   setDescription(description: string): AnimationEditor {
-    return this.edited(setDescription(this.document, description));
+    return this.edited(setDescription(this.document, description), {
+      kind: "typing",
+      field: "description",
+    });
   }
 
   setAngle(index: number, channel: number, angle: number): AnimationEditor {
-    return this.edited(setAngle(this.document, this.limits, index, channel, angle));
+    return this.edited(setAngle(this.document, this.limits, index, channel, angle), {
+      kind: "gesture",
+      id: `angle:${index}:${channel}`,
+    });
   }
 
   setTime(index: number, timeMs: number): AnimationEditor {
-    return this.edited(setTime(this.document, this.limits, index, timeMs));
+    return this.edited(setTime(this.document, this.limits, index, timeMs), {
+      kind: "gesture",
+      id: `time:${index}`,
+    });
   }
 
+  /** Each ease change is its own step: A/B-ing two eases is done with Ctrl+Z. */
   setEase(index: number, patch: EasePatch): AnimationEditor {
-    return this.edited(setEase(this.document, this.limits, index, patch));
+    return this.edited(setEase(this.document, this.limits, index, patch), { kind: "immediate" });
   }
 
   addKeyframeAt(timeMs: number): AnimationEditor {
-    return this.edited(addKeyframeAt(this.document, this.limits, timeMs));
+    return this.edited(addKeyframeAt(this.document, this.limits, timeMs), { kind: "immediate" });
   }
 
   removeKeyframe(index: number): AnimationEditor {
-    return this.edited(removeKeyframe(this.document, index));
+    return this.edited(removeKeyframe(this.document, index), { kind: "immediate" });
+  }
+
+  /**
+   * Close the step in progress — a pointer released, or a text field blurred.
+   *
+   * Without it, the drag that follows this one would join it: the stack cannot
+   * see a pointerup, so the view has to say when a gesture is over.
+   */
+  editCommitted(): AnimationEditor {
+    const history = this.history.committed(this.document);
+    return history === this.history
+      ? this
+      : this.with(this.document, this.saved, this.status, history, this.reveal);
+  }
+
+  /**
+   * A conflict freezes the history.
+   *
+   * Overwrite resends the document the server rejected, so a document moved by
+   * undo behind the dialog would not be the one that gets saved. Both choices
+   * hand undo straight back.
+   */
+  private get historyFrozen(): boolean {
+    return this.status.kind === "conflict";
+  }
+
+  get canUndo(): boolean {
+    return !this.historyFrozen && this.history.committed(this.document).canUndo;
+  }
+
+  get canRedo(): boolean {
+    return !this.historyFrozen && this.history.canRedo;
+  }
+
+  /**
+   * Undo is deliberately blind to the save machine: the stack survives a save,
+   * so undoing past a save point simply makes the document dirty again — which
+   * needs no code here, because dirty is a comparison against the snapshot.
+   */
+  undone(): AnimationEditor {
+    if (this.historyFrozen) return this;
+    const committed = this.editCommitted();
+    const move = committed.history.undo(committed.document);
+    if (move === null) return this;
+    return committed.with(
+      move.document,
+      this.saved,
+      this.status,
+      move.history,
+      revealOf(committed.document, move.document),
+    );
+  }
+
+  redone(): AnimationEditor {
+    if (this.historyFrozen) return this;
+    const move = this.history.redo(this.document);
+    if (move === null) return this;
+    return this.with(
+      move.document,
+      this.saved,
+      this.status,
+      move.history,
+      revealOf(this.document, move.document),
+    );
   }
 
   /**
@@ -242,14 +364,20 @@ export class AnimationEditor {
   /**
    * Conflict choice: discard mine, load newest.
    *
-   * The record travelled on the error, so there is nothing to refetch. Once
-   * undo lands this is recoverable — the stack survives, and the discarded
-   * document is one step back.
+   * The record travelled on the error, so there is nothing to refetch. Losing
+   * the work is recoverable: adopting the server's copy is a step of its own,
+   * so the discarded document is one Ctrl+Z away.
    */
   serverAdopted(): AnimationEditor {
     if (this.status.kind !== "conflict") return this;
     const server = this.status.server;
     const document = documentFromRecord(server);
-    return this.with(document, { document, updatedAt: server.updatedAt }, { kind: "idle" });
+    const committed = this.editCommitted();
+    return committed.with(
+      document,
+      { document, updatedAt: server.updatedAt },
+      { kind: "idle" },
+      committed.history.record(committed.document, document, { kind: "immediate" }, this.now()),
+    );
   }
 }

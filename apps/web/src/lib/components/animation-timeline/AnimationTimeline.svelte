@@ -37,6 +37,8 @@
     onease: (index: number, patch: EasePatch) => void;
     onremove: (index: number) => void;
     onadd: (timeMs: number) => void;
+    /** A drag finished: whatever it built up is one undo step. */
+    oncommit: () => void;
   }
 
   let {
@@ -52,6 +54,7 @@
     onease,
     onremove,
     onadd,
+    oncommit,
   }: Props = $props();
 
   const HEIGHT = 340;
@@ -141,8 +144,17 @@
    * Capture means a drag keeps following the pointer once it leaves the small
    * dot it started on — without it, a fast drag drops the moment the cursor
    * outruns the target.
+   *
+   * `onEnd` fires once on release, and only for a real drag. That is the signal
+   * undo needs: the editor sees a stream of angles and cannot tell where one
+   * gesture stops and the next begins, so the release has to say so.
    */
-  function drag(event: PointerEvent, onMove: (event: PointerEvent) => void, onTap?: () => void) {
+  function drag(
+    event: PointerEvent,
+    onMove: (event: PointerEvent) => void,
+    onEnd?: () => void,
+    onTap?: () => void,
+  ) {
     const target = event.currentTarget;
     if (!(target instanceof Element)) return;
     target.setPointerCapture(event.pointerId);
@@ -166,7 +178,8 @@
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", stop);
       target.removeEventListener("pointercancel", stop);
-      if (!dragging) onTap?.();
+      if (dragging) onEnd?.();
+      else onTap?.();
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", stop);
@@ -221,6 +234,7 @@
     drag(
       event,
       (moved) => ontime(index, timeAt(moved.clientX)),
+      oncommit,
       // clicked, not dragged: select and show the easing, per the settled model
       () => (popoverOpen = true),
     );
@@ -229,7 +243,7 @@
   function dragDot(event: PointerEvent, index: number, channel: number) {
     event.stopPropagation();
     selectedIndex = index;
-    drag(event, (moved) => onangle(index, channel, angleAt(moved.clientY)));
+    drag(event, (moved) => onangle(index, channel, angleAt(moved.clientY)), oncommit);
   }
 
   function easeFor(patch: EasePatch) {
