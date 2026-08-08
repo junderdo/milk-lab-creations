@@ -487,7 +487,12 @@
 <!-- An app shell wherever there is room for one — the preview takes what
      header and footer leave; without the room the page stacks and scrolls
      again, per spec §3.1. -->
-<main bind:clientHeight={shellHeight} class="flex flex-col editor-shell:min-h-0 editor-shell:flex-1" inert={dialogOpen}>
+<main
+  bind:clientHeight={shellHeight}
+  data-editor-shell
+  class="flex flex-col editor-shell:min-h-0 editor-shell:flex-1"
+  inert={dialogOpen}
+>
   <header
     bind:clientHeight={headerHeight}
     class="shrink-0 space-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-800"

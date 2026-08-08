@@ -382,13 +382,21 @@
   /** Offset above the finger, so the value is not under the thing reading it. */
   const READOUT_LIFT_PX = 44;
 
+  /** Half the widest bubble, near enough: the canvas clips what leaves it. */
+  const READOUT_HALF_WIDTH_PX = 48;
+
   let readout = $state<{ x: number; y: number; text: string } | null>(null);
 
   function showReadout(event: PointerEvent, text: string) {
     if (!coarse) return;
     const rect = canvas?.getBoundingClientRect();
     if (rect === undefined) return;
-    readout = { x: event.clientX - rect.left, y: event.clientY - rect.top - READOUT_LIFT_PX, text };
+    const x = event.clientX - rect.left;
+    readout = {
+      x: Math.min(Math.max(x, READOUT_HALF_WIDTH_PX), rect.width - READOUT_HALF_WIDTH_PX),
+      y: event.clientY - rect.top - READOUT_LIFT_PX,
+      text,
+    };
   }
 
   const hideReadout = () => (readout = null);
@@ -476,11 +484,13 @@
     </div>
   </div>
 
-  <!-- Ruler: the scrub surface. svelte-ignore because the strip is a pointer
-       affordance for the playhead, which the transport also exposes as buttons. -->
+  <!-- Ruler: the scrub surface. Clipped on x for the same reason as the canvas
+       — the last tick's label is drawn from the right edge outwards.
+       svelte-ignore because the strip is a pointer affordance for the playhead,
+       which the transport also exposes as buttons. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="relative h-6 cursor-ew-resize touch-none rounded-t-md bg-gray-100 select-none dark:bg-gray-900"
+    class="relative h-6 cursor-ew-resize touch-none overflow-x-clip rounded-t-md bg-gray-100 select-none dark:bg-gray-900"
     onpointerdown={scrub}
   >
     {#each ticks as tick (tick)}
@@ -514,14 +524,20 @@
     <!-- A no-scroll zone: `touch-none` means every touch that starts here is an
        editor gesture, and the page still scrolls from the chrome around it.
        45dvh with a 240 px floor is the stacked geometry; in the shell the
-       divider's height wins. -->
+       divider's height wins.
+
+       `overflow-x-clip` because the last column's grip and the drag readout are
+       centred on a point that can be the right edge: half of each hangs past it
+       and widens the document, which on a phone is a horizontal scrollbar under
+       the whole page. Clipped on x only, so the readout can still rise above
+       the canvas. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       bind:this={canvas}
       bind:clientWidth={width}
       bind:clientHeight={height}
       onpointerdown={pressCanvas}
-      class="relative h-[45dvh] min-h-60 touch-none rounded-b-md bg-gray-50 select-none dark:bg-gray-900/50 {graphHeight ===
+      class="relative h-[45dvh] min-h-60 touch-none overflow-x-clip rounded-b-md bg-gray-50 select-none dark:bg-gray-900/50 {graphHeight ===
       null
         ? 'lg:h-[34dvh] lg:max-h-[340px]'
         : 'editor-shell:h-[var(--graph-height)] editor-shell:min-h-0'}"

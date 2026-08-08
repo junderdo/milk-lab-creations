@@ -18,8 +18,16 @@
 </svelte:head>
 
 <!-- A flex column so a page can claim the rest of the viewport with `flex-1`
-     rather than subtracting this header's height from 100vh. -->
-<div class="flex min-h-screen flex-col bg-white dark:bg-gray-950">
+     rather than subtracting this header's height from 100vh.
+
+     A page that marks itself `data-editor-shell` gets the frame pinned to the
+     viewport instead of merely floored at it: `min-h-dvh` lets content grow the
+     page and scroll, which is right everywhere except a shell, where growing is
+     exactly the bug — the panes stop dividing a window and start dividing their
+     own overflow, and the timeline lands below the fold. -->
+<div
+  class="flex min-h-dvh flex-col bg-white editor-shell:has-[[data-editor-shell]]:h-dvh editor-shell:has-[[data-editor-shell]]:overflow-hidden dark:bg-gray-950"
+>
   <header class="shrink-0 border-b border-gray-200 dark:border-gray-800">
     <nav class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
       <div class="flex items-center gap-6">
