@@ -17,7 +17,7 @@
   and not undoable; undo only moves it as a side effect, to show what it did.
 -->
 <script lang="ts">
-  import { Redo2, Undo2 } from "@lucide/svelte";
+  import { ChevronDown, Redo2, Undo2 } from "@lucide/svelte";
   import { onDestroy, onMount, untrack } from "svelte";
   import { beforeNavigate, goto, replaceState } from "$app/navigation";
   import { resolve } from "$app/paths";
@@ -85,6 +85,7 @@
 
   let playheadMs = $state(0);
   let selectedIndex = $state<number | null>(null);
+  let previewCollapsed = $state(false);
 
   let nameInput: HTMLInputElement | undefined = $state();
   let descriptionInput: HTMLTextAreaElement | undefined = $state();
@@ -544,13 +545,29 @@
         </span>
       </div>
     {/if}
+    <!-- Only where the page stacks: on a phone the preview and the graph are
+         competing for the same screen, and the graph is the one being edited.
+         Above `lg` they each have their own pane and the divider settles it. -->
+    <button
+      type="button"
+      onclick={() => (previewCollapsed = !previewCollapsed)}
+      aria-expanded={!previewCollapsed}
+      aria-controls="editor-preview"
+      class="inline-flex items-center gap-1 text-sm text-gray-500 lg:hidden dark:text-gray-400"
+    >
+      <ChevronDown class="h-4 w-4 transition-transform {previewCollapsed ? '-rotate-90' : ''}" />
+      {previewCollapsed ? "Show preview" : "Hide preview"}
+    </button>
   </header>
 
   <!-- Definite height either way — fixed aspect while the page stacks, the
        leftover column once it doesn't — so the viewer arriving causes no layout
        shift; until then the curves hold the space. -->
   <section
-    class="relative aspect-[4/3] overflow-hidden bg-gray-100 lg:aspect-auto lg:min-h-0 lg:flex-1 dark:bg-gray-900"
+    id="editor-preview"
+    class="relative aspect-[4/3] overflow-hidden bg-gray-100 lg:aspect-auto lg:min-h-0 lg:flex-1 dark:bg-gray-900 {previewCollapsed
+      ? 'hidden lg:block'
+      : ''}"
   >
     {#if Viewer && modelUrl && !viewerFailed && editor.keyframes.length > 0}
       <Viewer
