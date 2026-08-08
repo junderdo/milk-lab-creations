@@ -269,6 +269,34 @@ export function insertionIndexFor(keyframes: Keyframe[], timeMs: number): number
 /** Ease used by a column added mid-edit: the payload's own default shape. */
 const ADDED_EASE = { easeInType: 1, easeOutType: 1, easeInMs: 150, easeOutMs: 150 } as const;
 
+/** Long enough to be a motion, short enough to be retimed in one drag. */
+const NEW_DURATION_MS = 1000;
+
+/**
+ * The document `/animations/new` opens on.
+ *
+ * Two neutral columns rather than none: a payload needs at least one keyframe,
+ * and a single one has no duration to draw a canvas across — the author would
+ * be looking at an editor with nothing to grab. Two gives them a curve and a
+ * span to work in, holding the robot's neutral pose, which is motionless until
+ * something is dragged. The name is left empty on purpose: naming it is the one
+ * thing only the author can do, and the Save button says so until they have.
+ */
+export function newDocument(limits: RobotLimits): EditorDocument {
+  const neutral = Array.from({ length: limits.channels }, () => Math.round(limits.maxAngle / 2));
+  return {
+    name: "",
+    description: "",
+    payload: {
+      schemaVersion: 1,
+      keyframes: [
+        { timeMs: 0, angles: neutral, ...ADDED_EASE },
+        { timeMs: NEW_DURATION_MS, angles: [...neutral], ...ADDED_EASE },
+      ],
+    },
+  };
+}
+
 /**
  * Insert a column at `timeMs`, holding the pose the animation already has there.
  *
@@ -334,5 +362,30 @@ export function updateInputFor(id: string, request: SaveRequest): UpdateInput {
     description: description === "" ? null : description,
     payload: request.document.payload,
     ...(request.expectedUpdatedAt === null ? {} : { expectedUpdatedAt: request.expectedUpdatedAt }),
+  };
+}
+
+export interface CreateInput {
+  robotSlug: string;
+  name: string;
+  description?: string;
+  payload: EditorPayload;
+}
+
+/**
+ * The `animations.create` input for the first save of a new animation.
+ *
+ * There is no guard to send — nothing exists yet to be stale against — and the
+ * robot comes from the route rather than the document, because which robot an
+ * animation is for is fixed at creation and never edited afterwards.
+ */
+export function createInputFor(robotSlug: string, request: SaveRequest): CreateInput {
+  const description = request.document.description.trim();
+  return {
+    robotSlug,
+    name: request.document.name.trim(),
+    // omitted rather than empty: `description` is optional server-side
+    ...(description === "" ? {} : { description }),
+    payload: request.document.payload,
   };
 }
