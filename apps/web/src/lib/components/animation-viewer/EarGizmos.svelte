@@ -98,11 +98,14 @@
 
       const entries: MeshEntry[] = [];
       azimuth.node.traverse((node) => {
-        const mesh = node as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const material = (mesh.material as THREE.MeshStandardMaterial).clone();
-        mesh.material = material;
-        entries.push({ mesh, material, channel: nearestPivot(mesh)?.channel ?? azimuth.channel });
+        if (!(node instanceof THREE.Mesh)) return;
+        // the material is a boundary like userData: a mesh that isn't carrying
+        // a single standard material simply doesn't get a tint
+        const shared: unknown = node.material;
+        if (!(shared instanceof THREE.MeshStandardMaterial)) return;
+        const material = shared.clone();
+        node.material = material;
+        entries.push({ mesh: node, material, channel: nearestPivot(node)?.channel ?? azimuth.channel });
       });
       ears.push({ azimuth, latitude, entries });
     }
@@ -137,22 +140,54 @@
   let selected = $state.raw<Ear | null>(null);
   let ringHover = $state<number | null>(null);
 
-  function onSceneMove(event: IntersectionEvent<PointerEvent>) {
-    hovered = insideGizmo(event.object) ? null : earFromObject(event.object);
+  /**
+   * The imperative registry types its events as `unknown`, so the hit object
+   * is checked out of them the same way `pivotFrom` checks `userData` — a
+   * boundary parse, not a cast.
+   */
+  function pickedObject(event: unknown): THREE.Object3D | null {
+    if (typeof event !== "object" || event === null || !("object" in event)) return null;
+    const { object } = event;
+    return object instanceof THREE.Object3D ? object : null;
+  }
+
+  function pickedEar(event: unknown): Ear | null {
+    const object = pickedObject(event);
+    if (object === null || insideGizmo(object)) return null;
+    return earFromObject(object);
+  }
+
+  function onSceneMove(event: unknown) {
+    hovered = pickedEar(event);
   }
 
   function onSceneLeave() {
     hovered = null;
   }
 
-  function onSceneClick(event: IntersectionEvent<MouseEvent>) {
-    if (insideGizmo(event.object)) return;
+  function onSceneClick(event: unknown) {
+    if (insideGizmo(pickedObject(event) ?? scene)) return;
     // the headband maps to no ear, so clicking it deselects like empty space
-    selected = earFromObject(event.object);
+    selected = pickedEar(event);
   }
 
   function onPointerMissed() {
     selected = null;
+  }
+
+  // A gesture that starts on an ear belongs to the ear, not the camera — even
+  // though ears have no drag of their own, orbit sits the gesture out (§3.2
+  // orbit priority). Rings lock through their own drag instead.
+  function onScenePointerDown(event: unknown) {
+    if (pickedEar(event) === null) return;
+    ondraglock(true);
+    const release = () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      ondraglock(false);
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
   }
 
   // Registered imperatively, not via a second <T is={scene}>: the scene's <T>
@@ -161,9 +196,10 @@
     picking.addInteractiveObject(scene, {
       onpointermove: onSceneMove,
       onpointerleave: onSceneLeave,
+      onpointerdown: onScenePointerDown,
       onclick: onSceneClick,
       onpointermissed: onPointerMissed,
-    } as Parameters<typeof picking.addInteractiveObject>[1]);
+    });
     return () => picking.removeInteractiveObject(scene);
   });
 
@@ -184,11 +220,9 @@
   $effect(() => {
     renderer.domElement.style.cursor = drag
       ? "grabbing"
-      : ringHover !== null && editing.canEditAngles
+      : (ringHover !== null && editing.canEditAngles) || hovered
         ? "grab"
-        : hovered
-          ? "pointer"
-          : "";
+        : "";
     return () => {
       renderer.domElement.style.cursor = "";
     };
@@ -279,7 +313,7 @@
       ((event.clientX - rect.left) / rect.width) * 2 - 1,
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     );
-    raycaster.setFromCamera(ndc, camera.current as THREE.PerspectiveCamera);
+    raycaster.setFromCamera(ndc, camera.current);
     return raycaster.ray;
   }
 
@@ -295,7 +329,7 @@
         center,
         axis: new THREE.Vector3(0, 0, 1).applyQuaternion(q),
         grabPoint: event.point,
-        cameraPosition: (camera.current as THREE.Object3D).getWorldPosition(new THREE.Vector3()),
+        cameraPosition: camera.current.getWorldPosition(new THREE.Vector3()),
         value: valueOf(ring),
       }),
       originX: event.nativeEvent.clientX,
@@ -320,6 +354,10 @@
     ) {
       return;
     }
+    // re-checked at engagement, not just at grab: the grab may have paused
+    // playback, and whether an auto-key is possible belongs to the playhead
+    // where it came to rest
+    if (!active.engaged && !editing.canEditAngles) return;
     const moved = moveRingDrag(active.drag, pointerRay(event), editing.maxAngle);
     drag = { ...active, drag: moved, engaged: true };
     editing.onangle(active.ring.pivot.channel, moved.value);

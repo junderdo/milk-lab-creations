@@ -431,7 +431,7 @@
     editor.keyframes.some((frame) => frame.timeMs === Math.round(playheadMs)),
   );
 
-  function ringAngle(channel: number, angle: number) {
+  function applyRingAngle(channel: number, angle: number) {
     if (ringIndex === null) {
       const at = Math.round(playheadMs);
       const existing = editor.keyframes.findIndex((frame) => frame.timeMs === at);
@@ -447,7 +447,6 @@
           id: `angle:${ringIndex}:${channel}`,
         });
       }
-      selectedIndex = ringIndex;
     }
     editor = editor.setAngle(ringIndex, channel, angle);
   }
@@ -462,7 +461,7 @@
     // at the cap a drag that would need to auto-key has nowhere to write
     canEditAngles: !editor.atKeyframeCap || hasColumnAtPlayhead,
     ondragstart: () => timeline?.pause(),
-    onangle: ringAngle,
+    onangle: applyRingAngle,
     oncommit: ringCommitted,
     onselect: (channels) => (highlightChannels = channels),
   });
