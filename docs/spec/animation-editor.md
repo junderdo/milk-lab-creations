@@ -1,6 +1,7 @@
 # Animation Editor — Build-Ready Spec
 
-Destination artifact of the [3D Animation Editor Spec wayfinder map](https://trello.com/c/MnE5dwlb/35-wayfinder-map-3d-animation-editor-spec).
+Destination artifact of the [3D Animation Editor Spec wayfinder map](https://trello.com/c/MnE5dwlb/35-wayfinder-map-3d-animation-editor-spec)
+and the [In-3D-view servo rotation editing map](https://trello.com/c/auPwHql6/67-wayfinder-map-in-3d-view-servo-rotation-editing) (§3.2).
 Every decision below was settled in a resolved ticket (grilling, research, prototype, or task card — full
 resolutions live as comments on the Done cards of the Milk Lab Creations Trello board). This document is
 self-contained: implementation should not need to reopen any question answered here.
@@ -68,8 +69,13 @@ One shared **`AnimationViewer`** component in `$lib` (grown from the prototype's
 - **The interpolator is a pure importable module** — the graph editor draws its curves from the same
   code that poses the 3D model, so what you see in the curves is what the robot does.
 - `prefers-reduced-motion`: start paused at the neutral pose.
-- Detail viewer gets orbit + zoom (clamped). The raw JSON keyframe dump on the detail page is removed
-  once the viewer lands.
+- **Camera: one behavior on both surfaces.** Detail viewer and editor both get the same clamped
+  orbit + zoom. The editor adds only the handle-priority rule of §3.2 — a gesture starting on a ring
+  or an ear suppresses orbit for that gesture; empty space orbits as normal. No editor-specific
+  clamps, no reset-view control, no persisted camera state (the default framing on load is the
+  reset). This retires the stale "editor's fixed camera" expectation still commented in
+  `RobotScene.svelte` — remove that comment when implementation lands. The raw JSON keyframe dump on
+  the detail page is removed once the viewer lands.
 
 **Loading:** viewer chunk lazy-imported eagerly on detail-page mount (not scroll-gated — it is the
 page's point). The glb is served per robot from `/models/<robot>.glb` with immutable cache headers. A
@@ -132,6 +138,109 @@ trade: phone-portrait editing is cramped but capable.
   stack: collapsible 3D preview → transport + ruler → canvas → channel chips (≥44 px tall, wrapping,
   adjacent to the canvas). Both orientations supported; landscape may be passively hinted, never a
   blocking rotate screen. Grips stay at the column top.
+
+### 3.2 In-3D editing — hover, selection, rotation rings
+
+Editing servo angles directly in the editor's 3D view. Settled by the
+[In-3D-view servo rotation editing map](https://trello.com/c/auPwHql6/67-wayfinder-map-in-3d-view-servo-rotation-editing):
+two research tickets (picking/orbit plumbing; drag math and undo mechanics) and a three-variant
+prototype (**variant A** selected, branch `prototype/ring-gizmos` — throwaway, stays out of main).
+Mechanics detail lives in `docs/research/threlte-picking-gizmos.md` and
+`docs/research/ring-drag-mechanics.md`.
+
+**Editor-only.** The detail-page viewer gets none of this — no hover, no handles.
+
+**Out of scope (explicitly decided):** free-drag ear posing (grabbing the ear mesh to drive both
+channels at once — rings only), timeline→3D selection (clicking a curve never selects an ear), and
+multi-ear simultaneous editing.
+
+#### Hover and selection
+
+- **One ear selected at a time.** Hovering an ear's meshes (ear shell or servo housing) lights the
+  ear up and shows a grab cursor; click selects, clicking the other ear switches, clicking empty
+  space or pressing Esc deselects. The headband is not selectable.
+- **Picking:** `interactivity()` from `@threlte/extras`, one handler set on the glTF scene root;
+  the hit mesh maps to its channel by walking `object.parent` up to the nearest pivot node with
+  valid `{channel}` extras (confirmed against the glb: `ServosL`→0, `EarL`→1, `ServosR`→2,
+  `EarR`→3, `Headband`→none). Reuse the existing `pivotFrom` validation so picking and posing
+  share one contract.
+- **Hover treatment (variant A):** per-channel emissive tint — the servo housing lights in the
+  azimuth channel's colour, the ear shell in the latitude channel's colour. Emissive intensity 0.5
+  while hovered, 0.25 while merely selected.
+- **Selection is view state:** never undoable, never drafted (§4.1). Save — including both paths of
+  the conflict dialog (§4.5) — leaves selection untouched; the ears are rig structure, not document
+  content, so even "Discard mine, load newest" keeps the selected ear. Selection changes only by
+  click/tap, Esc, or empty-space click.
+
+#### Rings
+
+- **One ring per channel** (azimuth + latitude) around the selected ear's pivot, oriented on the
+  pivot's actual world-space `axis` from the glTF extras. Each drag writes exactly one channel.
+- **Limited arcs:** the ring renders only the servo's valid range — sweep
+  `deg(0 − neutralDeg) … deg(maxAngle − neutralDeg)` about the axis, limits from `RobotLimits`
+  (never hardcoded) — so the drawn arc, the clamp, and the pose math share one source of truth.
+- **Geometry/style (variant A):** thin crisp torus arcs — radius = pivot subtree bounding radius
+  × 1.25, tube ≈ 1.6% of radius — drawn with `depthTest: false` and high `renderOrder` so they stay
+  on top of the model; opacity 0.9, rising to 1.0 while hovered/dragged. A solid sphere (≈ 7% of
+  radius) rides the arc marking the current angle. Colours from `CHANNEL_STYLES`: 600-series hues
+  on the light canvas, 400-series on dark — matching that channel's timeline curve.
+- **Degree readout only while dragging:** a small tabular-nums pill at 1.35× radius along the
+  marker angle, channel-coloured left border. No always-on HUD.
+
+#### Drag semantics and auto-key
+
+- **Pointer→angle mapping:** raycast the ring's rotation plane; per-move incremental angle
+  `Δ = wrapToPi(θ − θ_prev)` from `atan2` in a fixed in-plane basis, right-handed about the pivot
+  axis so ring angle = servo value − `neutralDeg` with no sign factor. When the ring is near
+  edge-on at grab time (`|axis · eye| < 0.25`), the whole drag falls back to the TransformControls
+  tangent mapping (camera-facing plane, displacement projected onto `axis × eye`, gain
+  `20 / cameraDistance`). One mapping per gesture.
+- **Clamping:** the working value clamps to `[0, maxAngle]` on **every move** (no windup — the ring
+  responds instantly on reversal), then hands raw degrees to `setAngle`, whose clamp + integer
+  round is the document invariant. Wrapped per-move deltas make a min↔max jump across the arc gap
+  impossible by construction.
+- **Auto-key:** dragging a ring edits the keyframe under the playhead; when none exists, one is
+  inserted at the playhead seeded from the interpolated pose — a place to edit, not an edit. The
+  insert happens lazily on the first move past the drag slop, so a tap never inserts. At the
+  keyframe cap, auto-key drags disable the same way the timeline's add affordance does (§4.6).
+- **One undo step:** the auto-insert and the drag's angle changes collapse into a single step via
+  the optional `EditIntent` parameter on `AnimationEditor.addKeyframeAt` — the insert passes the
+  same gesture id the drag's `setAngle` calls use; `editCommitted()` on release closes the step.
+  One Ctrl+Z removes the angle change and the auto-keyed frame together.
+- **Orbit priority:** pointer-down raycasts first; a hit on a ring or an ear wins — orbit is
+  suppressed for that gesture (`<OrbitControls enabled={…}>` derived from the active drag, plus
+  `stopPropagation()` and pointer capture). Empty space orbits as normal (§2 camera).
+
+#### Playback, deletion, and other edge cases
+
+- **Playback:** selection persists through Play; rings stay visible with the current-angle markers
+  riding along as the pose animates. Starting a ring drag **pauses playback first**, then edits at
+  the now-stationary playhead exactly like the normal case — no editing-while-playing mode, and no
+  moving auto-key target.
+- **Keyframe deletion is a non-event for selection:** keyframes are whole columns across all 4
+  channels, so no deletion is specific to the selected ear. The ear stays selected, rings stay up,
+  and the markers move to wherever the interpolated pose now lands — the same as any edit. A
+  subsequent drag auto-keys as usual. (The payload floor of 1 keyframe means the timeline never
+  goes empty.)
+
+#### Timeline highlight — highlight, don't drive
+
+Selecting an ear emphasizes its two curves in the graph timeline; nothing flows the other way.
+
+- The selected ear's two **visible** curves and their keyframe dots render at full opacity with a
+  modest stroke-width bump (2px → 3px). The other visible curves and dots drop to ~35% opacity but
+  stay fully interactive and hit-testable — dimming is emphasis, not disablement.
+- **The visibility chips are never touched.** A chip-hidden channel stays hidden even when its ear
+  is selected — highlight never resurrects a curve. Both of the selected ear's channels hidden →
+  no highlight; that is the user's chip choice. Deselect restores everything.
+
+#### Touch
+
+Same model as pointer: tap = select, ring drag = edit, Esc's role covered by empty-space tap.
+Coarse-pointer adaptations: invisible fat torus hit meshes as the rings' real hit targets (tube
+widened from 0.2× to 0.4× radius on coarse pointers), `clickDistanceThreshold` 16 vs 8, and
+`touch-action: none` on the canvas while gizmos are live (the editor sets this itself, not relying
+on OrbitControls' side effect).
 
 ## 4. Editor state
 
@@ -245,8 +354,10 @@ Decided here, to be built (roughly dependency-ordered):
    `CONFLICT` error carrying the current record (§4.5).
 2. **API + schema — remix:** `remixedFromId` column (nullable, no FK) + migration; `animations.remix`
    mutation; `remixedFrom` resolution in `byId` (§5).
-3. **Merge the research branches** so `docs/research/firmware-easing.md` and
-   `docs/research/threlte-gltf.md` land on `main` alongside this spec.
+3. **Merge the research branches** so `docs/research/firmware-easing.md`,
+   `docs/research/threlte-gltf.md`, `docs/research/threlte-picking-gizmos.md` (branch
+   `research/threlte-picking-gizmos`), and `docs/research/ring-drag-mechanics.md` (branch
+   `research/ring-drag-mechanics`) land on `main` alongside this spec.
 4. **`AnimationViewer` + interpolator in `$lib`**, promoted from the `prototype/threlte-preview`
    branch's `Scene.svelte` / `interpolator.ts` (§2); detail page integration (viewer replaces the JSON
    dump; sparkline placeholder; lazy chunk); sparkline component on `/my` cards.
@@ -254,6 +365,9 @@ Decided here, to be built (roughly dependency-ordered):
    editor-bound `AnimationViewer`, editor state per §4 (undo, drafts, dirty guard, save/conflict UI),
    validation UX per §4.6, and touch/small-screen behavior per §3.1.
 6. **Remix UI** (§5) and visibility control (§4, out-of-band `setVisibility`).
+7. **In-3D editing** (§3.2): hover/selection, rotation rings with auto-key, timeline highlight,
+   editor orbit with handle priority (removing the fixed-camera comment in `RobotScene.svelte`),
+   and the `EditIntent` parameter on `addKeyframeAt`. Builds on items 4–5.
 
 Building these is a separate effort from this map — items above become their own tickets/cards when
 work starts.
