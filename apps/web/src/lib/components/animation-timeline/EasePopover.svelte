@@ -80,8 +80,11 @@
 
   const isSheet = $derived(presentation === "sheet");
 
-  /** As far as a slider goes before you tap the number and type instead. */
+  /** Where the slider's range ends, unless a longer window was typed in. */
   const WINDOW_SLIDER_MAX_MS = 2000;
+
+  /** Never below the current value: a slider cannot silently shorten a window. */
+  const sliderMax = $derived(Math.max(WINDOW_SLIDER_MAX_MS, keyframe.easeInMs, keyframe.easeOutMs));
 
   let sheet: HTMLDivElement | undefined = $state();
 
@@ -127,7 +130,9 @@
 <div
   bind:this={sheet}
   class={isSheet
-    ? "fixed inset-x-0 bottom-0 z-20 space-y-2 rounded-t-xl border-t border-gray-300 bg-white p-4 pb-6 text-xs shadow-[0_-4px_24px_rgba(0,0,0,0.18)] dark:border-gray-700 dark:bg-gray-950"
+    ? // capped and scrollable so a landscape phone can still reach the last
+      // control, and so the canvas above is never fully covered
+      "fixed inset-x-0 bottom-0 z-20 max-h-[70dvh] space-y-2 overflow-y-auto rounded-t-xl border-t border-gray-300 bg-white p-4 pb-6 text-xs shadow-[0_-4px_24px_rgba(0,0,0,0.18)] dark:border-gray-700 dark:bg-gray-950"
     : "absolute top-6 z-20 space-y-2 rounded-md border border-gray-300 bg-white p-3 text-xs shadow-lg dark:border-gray-700 dark:bg-gray-950"}
   style={isSheet ? undefined : `left:${left}px; width:${WIDTH}px`}
   role="group"
@@ -207,9 +212,9 @@
       <input
         type="range"
         min="0"
-        max={WINDOW_SLIDER_MAX_MS}
+        max={sliderMax}
         step="10"
-        value={Math.min(ms, WINDOW_SLIDER_MAX_MS)}
+        value={ms}
         disabled={unusable}
         aria-label="Ease-{side} window slider"
         class="col-span-3 h-11 w-full touch-none disabled:opacity-40"
