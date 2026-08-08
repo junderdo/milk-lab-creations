@@ -1,6 +1,10 @@
 <!--
   PROTOTYPE — THROWAWAY (branch prototype/ring-gizmos). Do not merge to main.
 
+  VERDICT (2026-08-08): variant A selected. Emissive per-channel hover tint,
+  thin depth-test-off ring arcs with a sphere angle marker, degree pill while
+  dragging. B and C rejected.
+
   Three variants of hover highlight + rotation-ring gizmos for the editor's 3D
   view, switchable via ?variant= on the editor route:
 
