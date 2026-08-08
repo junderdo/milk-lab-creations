@@ -52,7 +52,8 @@ export type SaveStatus =
   | { kind: "saving"; request: SaveRequest }
   /** `request` is what the server rejected — Overwrite resends exactly it. */
   | { kind: "conflict"; server: LoadedAnimation; request: SaveRequest }
-  | { kind: "failed"; message: string };
+  /** `retryable` false = resending the same request cannot succeed. */
+  | { kind: "failed"; message: string; retryable: boolean };
 
 /**
  * The document as last known to be on the server, and when that was.
@@ -266,6 +267,11 @@ export class AnimationEditor {
     return this.status.kind === "failed" ? this.status.message : null;
   }
 
+  /** False for a failure that resending cannot fix — no "Try again" for it. */
+  get errorRetryable(): boolean {
+    return this.status.kind === "failed" && this.status.retryable;
+  }
+
   setName(name: string): AnimationEditor {
     return this.edited(setName(this.document, name), { kind: "typing", field: "name" });
   }
@@ -419,9 +425,9 @@ export class AnimationEditor {
     });
   }
 
-  saveFailed(message: string): AnimationEditor {
+  saveFailed(message: string, retryable = true): AnimationEditor {
     if (this.status.kind !== "saving") return this;
-    return this.with(this.document, this.saved, { kind: "failed", message });
+    return this.with(this.document, this.saved, { kind: "failed", message, retryable });
   }
 
   errorDismissed(): AnimationEditor {

@@ -12,10 +12,17 @@
  * still true and still actionable.
  */
 
+import { ANIMATION_CAP_MESSAGE, isAnimationCapError } from "../quota";
 import type { LoadedAnimation } from "./editor-state";
 
 export type SaveFailure =
-  { kind: "conflict"; server: LoadedAnimation } | { kind: "message"; message: string };
+  | { kind: "conflict"; server: LoadedAnimation }
+  /**
+   * `retryable` is false where sending the identical request again cannot
+   * succeed — the animation cap. Offering "Try again" there is an invitation
+   * to a loop, so the banner drops the button.
+   */
+  | { kind: "message"; message: string; retryable: boolean };
 
 const GENERIC_MESSAGE = "Could not save. Please try again.";
 
@@ -58,5 +65,8 @@ export function saveFailureFrom(error: unknown): SaveFailure {
     const server = asLoadedAnimation(data.current);
     if (server !== null) return { kind: "conflict", server };
   }
-  return { kind: "message", message: messageOf(error) };
+  if (isAnimationCapError(error)) {
+    return { kind: "message", message: ANIMATION_CAP_MESSAGE, retryable: false };
+  }
+  return { kind: "message", message: messageOf(error), retryable: true };
 }

@@ -1,5 +1,6 @@
 import { error, redirect } from "@sveltejs/kit";
 import { limitsFor } from "$lib/editor/document";
+import { atAnimationCap } from "$lib/quota";
 import { trpc } from "$lib/trpc";
 import type { PageLoad } from "./$types";
 
@@ -18,6 +19,11 @@ export const ssr = false;
 export const load: PageLoad = async ({ fetch, parent }) => {
   const { accessToken } = await parent();
   if (!accessToken) redirect(302, "/auth/login");
+
+  // asked before the editor opens: an hour of authoring that the save refuses
+  // is worse than a closed door
+  const quota = await trpc(fetch, accessToken).animations.quota.query();
+  if (atAnimationCap(quota.count)) redirect(302, "/my");
 
   const robots = await trpc(fetch, accessToken).robots.list.query();
   const chosen = robots.flatMap((robot) => {

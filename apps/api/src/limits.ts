@@ -25,6 +25,13 @@ export const MAX_PAYLOAD_BYTES = 32 * 1024;
 /** Keyframe and easing times are uint16 in the firmware struct. */
 export const MAX_TIME_MS = 65535;
 
+/**
+ * Per-user animation cap, counting originals and remixes alike — a remix is a
+ * row owned by whoever forked it. Here rather than in router.ts so the web app
+ * can warn before the work instead of after the save.
+ */
+export const MAX_ANIMATIONS_PER_USER = 30;
+
 /** Animation name: trimmed, 1–100 characters. */
 export const NAME_MAX = 100;
 

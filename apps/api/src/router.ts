@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Context } from "./context.ts";
 import { withOccRetry } from "./occ.ts";
-import { DESCRIPTION_MAX, NAME_MAX } from "./limits.ts";
+import { DESCRIPTION_MAX, MAX_ANIMATIONS_PER_USER, NAME_MAX } from "./limits.ts";
 import {
   derivedScalars,
   packWireFormat,
@@ -11,9 +11,6 @@ import {
   type AnimationPayload,
 } from "./payload.ts";
 import { authedProcedure, publicProcedure, router, StaleWriteError } from "./trpc.ts";
-
-/** Per-user animation cap: blocks runaway clients, not real creative use. */
-export const MAX_ANIMATIONS_PER_USER = 100;
 
 /** Account deletion batch size — comfortably under DSQL's 3,000-row/10 MiB. */
 const DELETE_BATCH_SIZE = 200;
@@ -125,10 +122,18 @@ async function getVisibleAnimationWithSource(ctx: Context, id: string) {
   };
 }
 
-/** Blocks runaway clients on every path that creates an animation. */
+const ownedAnimationCount = (ctx: Context, ownerId: string) =>
+  ctx.db.animation.count({ where: { ownerId } });
+
+/**
+ * Blocks runaway clients on every path that creates an animation.
+ *
+ * The cap is this API's only FORBIDDEN — reads hide behind NOT_FOUND so private
+ * ids don't leak — which is what lets the client recognise it by code alone
+ * rather than by matching on the message.
+ */
 async function assertUnderAnimationCap(ctx: Context, ownerId: string) {
-  const count = await ctx.db.animation.count({ where: { ownerId } });
-  if (count >= MAX_ANIMATIONS_PER_USER) {
+  if ((await ownedAnimationCount(ctx, ownerId)) >= MAX_ANIMATIONS_PER_USER) {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: `animation limit reached (${MAX_ANIMATIONS_PER_USER})`,
@@ -225,6 +230,16 @@ const animationsRouter = router({
       orderBy: { createdAt: "desc" },
     }),
   ),
+
+  /**
+   * How much of the cap is used — so a page can disable "New animation" and
+   * "Remix" rather than let a user author something the save will refuse.
+   * `/my` has the count already in its list and does not need this.
+   */
+  quota: authedProcedure.query(async ({ ctx }) => ({
+    count: await ownedAnimationCount(ctx, ctx.dbUser.id),
+    limit: MAX_ANIMATIONS_PER_USER,
+  })),
 
   byId: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
