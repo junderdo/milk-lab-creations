@@ -61,7 +61,7 @@
 
   const selectedClasses =
     "border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900";
-  const unselectedClasses = "border-gray-300 text-gray-500 dark:border-gray-700";
+  const unselectedClasses = "border-gray-300 text-gray-500 dark:border-gray-700 dark:text-gray-400";
 
   function windowMs(value: string): number {
     const parsed = Number(value);
@@ -79,17 +79,17 @@
     <b class="text-gray-900 dark:text-white">Keyframe {index + 1} · {keyframe.timeMs} ms</b>
     <span class="flex items-center gap-2">
       {#if canRemove}
-        <button type="button" class="text-red-600 hover:underline" onclick={onremove}>delete</button
+        <button type="button" class="text-red-600 hover:underline dark:text-red-400" onclick={onremove}>delete</button
         >
       {/if}
-      <button type="button" class="text-gray-400" onclick={onclose} aria-label="Close easing">
+      <button type="button" class="text-gray-400 dark:text-gray-500" onclick={onclose} aria-label="Close easing">
         ✕
       </button>
     </span>
   </div>
 
   <div class="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1">
-    <span class="text-gray-500">out</span>
+    <span class="text-gray-500 dark:text-gray-400">out</span>
     <div class="flex gap-1">
       {#each easeTypes as ease (ease)}
         <button
@@ -115,7 +115,7 @@
       onchange={(event) => onpatch({ easeOutMs: windowMs(event.currentTarget.value) })}
     />
 
-    <span class="text-gray-500">in</span>
+    <span class="text-gray-500 dark:text-gray-400">in</span>
     <div class="flex gap-1">
       {#each easeTypes as ease (ease)}
         <button
@@ -142,7 +142,7 @@
     />
   </div>
 
-  <p class="text-[10px] leading-snug text-gray-400">
+  <p class="text-[10px] leading-snug text-gray-400 dark:text-gray-500">
     Ease is per column — it shapes all {keyframe.angles.length} curves of this transition.
   </p>
 </div>

@@ -4,6 +4,18 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<!-- Paint the stored theme before first paint, or a light-theme visitor gets a
+		     dark flash on every load. Key and default mirror $lib/theme/theme.ts. -->
+		<script>
+			try {
+				document.documentElement.classList.toggle(
+					"dark",
+					localStorage.getItem("milklab:theme") !== "light",
+				);
+			} catch {
+				document.documentElement.classList.add("dark");
+			}
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

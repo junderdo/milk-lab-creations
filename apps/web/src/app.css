@@ -2,3 +2,15 @@
 
 /* Tark UI components use class-based dark mode */
 @custom-variant dark (&:is(.dark *));
+
+/* The document itself, so overscroll, scrollbars and native controls agree with
+   the theme the app paints below them. */
+:root {
+  color-scheme: light;
+  background-color: var(--color-white);
+}
+
+:root.dark {
+  color-scheme: dark;
+  background-color: var(--color-gray-950);
+}

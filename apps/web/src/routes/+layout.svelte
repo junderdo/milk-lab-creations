@@ -3,6 +3,7 @@
   import { resolve } from "$app/paths";
   import favicon from "$lib/assets/favicon.svg";
   import { setAccessToken } from "$lib/trpc";
+  import ThemeToggle from "$lib/components/theme-toggle/ThemeToggle.svelte";
 
   let { data, children } = $props();
 
@@ -34,6 +35,7 @@
         {/if}
       </div>
       <div class="flex items-center gap-3">
+        <ThemeToggle />
         {#if data.me}
           <span class="text-sm text-gray-600 dark:text-gray-400">{data.me.displayName}</span>
           <form method="POST" action="/auth/logout">
@@ -45,7 +47,7 @@
           <a
             href={resolve("/auth/login")}
             data-sveltekit-reload
-            class="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-white dark:text-gray-900"
+            class="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
             >Sign in with Google</a
           >
         {/if}
