@@ -32,6 +32,12 @@
     /** Live counter in the chrome — amber as the robot's ceiling approaches. */
     nearCap: boolean;
     atCap: boolean;
+    /**
+     * Graph height in px, applied only where the editor is an app shell (`lg`
+     * and up) and its divider has a fixed height to split. `null` leaves the
+     * responsive default, which is what every other caller wants.
+     */
+    graphHeight?: number | null;
     onangle: (index: number, channel: number, angle: number) => void;
     ontime: (index: number, timeMs: number) => void;
     onease: (index: number, patch: EasePatch) => void;
@@ -49,6 +55,7 @@
     selectedIndex = $bindable(null),
     nearCap,
     atCap,
+    graphHeight = null,
     onangle,
     ontime,
     onease,
@@ -333,7 +340,11 @@
     bind:this={canvas}
     bind:clientWidth={width}
     bind:clientHeight={height}
-    class="relative h-[45dvh] max-h-[340px] min-h-60 touch-none rounded-b-md bg-gray-50 select-none lg:h-[34dvh] dark:bg-gray-900/50"
+    class="relative h-[45dvh] max-h-[340px] min-h-60 touch-none rounded-b-md bg-gray-50 select-none dark:bg-gray-900/50 {graphHeight ===
+    null
+      ? 'lg:h-[34dvh]'
+      : 'lg:h-[var(--graph-height)] lg:max-h-none lg:min-h-0'}"
+    style={graphHeight === null ? undefined : `--graph-height:${graphHeight}px`}
   >
     <svg class="absolute inset-0 h-full w-full" aria-hidden="true">
       {#each gridAngles as angle (angle)}
