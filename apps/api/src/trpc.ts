@@ -44,7 +44,7 @@ export const authedProcedure = t.procedure.use(async ({ ctx, next }) => {
   const sub = ctx.user.sub;
   let dbUser = await ctx.db.user.findUnique({ where: { id: sub } });
   if (!dbUser) {
-    const profile = await ctx.fetchProfile(sub);
+    const profile = await ctx.fetchProfile(ctx.user.username);
     dbUser = await withOccRetry(() =>
       ctx.db.user.upsert({
         where: { id: sub },

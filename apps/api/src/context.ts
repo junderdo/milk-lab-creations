@@ -7,6 +7,6 @@ export interface Context {
   db: Db;
   /** Verified caller, or null when anonymous. */
   user: AuthUser | null;
-  /** Fetches profile claims for JIT provisioning (faked in tests). */
-  fetchProfile: (sub: string) => Promise<Profile>;
+  /** Fetches profile claims for JIT provisioning, by pool username (faked in tests). */
+  fetchProfile: (username: string) => Promise<Profile>;
 }

@@ -170,6 +170,22 @@ export class AnimationEditor {
     return !documentsEqual(this.document, this.saved.document);
   }
 
+  /** The server version the document is edited on top of — what a draft records. */
+  get baseUpdatedAt(): Date {
+    return this.saved.updatedAt;
+  }
+
+  /**
+   * Adopt a draft recovered from this device as the working document.
+   *
+   * Not a history step: restoring happens before editing begins, so there is
+   * nothing to undo back to. Dirty follows from the comparison, which means a
+   * restored draft that matches the server leaves a clean editor.
+   */
+  draftRestored(document: EditorDocument): AnimationEditor {
+    return this.with(document, this.saved, this.status);
+  }
+
   get nameIsEmpty(): boolean {
     return this.document.name.trim() === "";
   }

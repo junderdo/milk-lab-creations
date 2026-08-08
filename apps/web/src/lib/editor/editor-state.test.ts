@@ -161,6 +161,31 @@ describe("save", () => {
   });
 });
 
+describe("drafts", () => {
+  it("exposes the server version a draft would be written on top of", () => {
+    expect(opened.baseUpdatedAt).toEqual(LOADED_AT);
+
+    const savedAt = new Date("2026-08-05T13:00:00.000Z");
+    const saved = opened.setName("Renamed").saveStarted().saveSucceeded(record({ updatedAt: savedAt }));
+    expect(saved.baseUpdatedAt).toEqual(savedAt);
+  });
+
+  it("restores a draft as the working document, dirty against the server copy", () => {
+    const restored = opened.draftRestored({ ...opened.document, name: "From a closed tab" });
+
+    expect(restored.document.name).toBe("From a closed tab");
+    expect(restored.dirty).toBe(true);
+    expect(restored.canSave).toBe(true);
+    // restoring happens before editing begins, so it is not a step to undo past
+    expect(restored.canUndo).toBe(false);
+    expect(restored.saveStarted().pendingRequest?.expectedUpdatedAt).toEqual(LOADED_AT);
+  });
+
+  it("leaves the guard alone for a draft that turns out to match the server", () => {
+    expect(opened.draftRestored({ ...opened.document }).dirty).toBe(false);
+  });
+});
+
 describe("undo", () => {
   it("has nothing to undo on a freshly opened animation", () => {
     expect(opened.canUndo).toBe(false);

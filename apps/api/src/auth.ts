@@ -11,6 +11,13 @@ import { Resource } from "sst";
 export interface AuthUser {
   /** Cognito sub — also the users.id primary key. */
   sub: string;
+  /**
+   * Pool username, which is how the user directory is addressed.
+   *
+   * Not the sub: a federated user's username is `google_<id>`, and the pool
+   * does not answer `AdminGetUser` for a sub at all.
+   */
+  username: string;
 }
 
 export interface Profile {
@@ -30,7 +37,10 @@ export async function verifyBearer(authorization: string | undefined): Promise<A
   });
   try {
     const claims = await verifier.verify(authorization.slice("Bearer ".length));
-    return { sub: claims.sub };
+    // every Cognito access token carries `username`, but the verifier types the
+    // payload loosely; a token without one cannot be provisioned from
+    if (typeof claims.username !== "string") return null;
+    return { sub: claims.sub, username: claims.username };
   } catch {
     return null;
   }
@@ -38,11 +48,11 @@ export async function verifyBearer(authorization: string | undefined): Promise<A
 
 let cognito: CognitoIdentityProviderClient | undefined;
 
-/** Fetches email/name for JIT user provisioning. */
-export async function fetchProfile(sub: string): Promise<Profile> {
+/** Fetches email/name for JIT user provisioning, by pool username. */
+export async function fetchProfile(username: string): Promise<Profile> {
   cognito ??= new CognitoIdentityProviderClient({});
   const result = await cognito.send(
-    new AdminGetUserCommand({ UserPoolId: Resource.UserPool.id, Username: sub }),
+    new AdminGetUserCommand({ UserPoolId: Resource.UserPool.id, Username: username }),
   );
   const attrs = new Map(result.UserAttributes?.map((a) => [a.Name, a.Value]));
   const email = attrs.get("email") ?? "";
