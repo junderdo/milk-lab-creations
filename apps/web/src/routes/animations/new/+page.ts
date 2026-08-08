@@ -7,30 +7,24 @@ import type { PageLoad } from "./$types";
 export const ssr = false;
 
 /**
- * The robots a new animation can be authored for.
+ * The robot a new animation is authored for: the first one that can be edited.
  *
  * A robot with no validation profile is one whose documents the API would
- * reject on save, so it is not offered — the same rule the edit route applies,
- * from the other side. `?robot=<slug>` picks one; without it the first robot
- * that can be edited is the one, which is what makes this route work with a
- * single robot today and with several later, hardcoding neither.
+ * reject on save, so it is skipped — the same rule the edit route applies, from
+ * the other side. Asking the list rather than naming a slug is what keeps this
+ * route working when a second robot arrives; choosing between them is a picker
+ * this project does not need while there is one.
  */
-export const load: PageLoad = async ({ fetch, parent, url }) => {
+export const load: PageLoad = async ({ fetch, parent }) => {
   const { accessToken } = await parent();
   if (!accessToken) redirect(302, "/auth/login");
 
   const robots = await trpc(fetch, accessToken).robots.list.query();
-  const editable = robots.flatMap((robot) => {
+  const chosen = robots.flatMap((robot) => {
     const limits = limitsFor(robot.slug);
     return limits === undefined ? [] : [{ robot: { slug: robot.slug, name: robot.name }, limits }];
-  });
+  })[0];
 
-  const requested = url.searchParams.get("robot");
-  const chosen =
-    requested === null ? editable[0] : editable.find((each) => each.robot.slug === requested);
-  if (chosen === undefined) {
-    error(501, requested === null ? "No robot can be edited yet" : `${requested} can't be edited`);
-  }
-
+  if (chosen === undefined) error(501, "No robot can be edited yet");
   return chosen;
 };

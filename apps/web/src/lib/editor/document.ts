@@ -25,6 +25,12 @@ import { keyframesFromPayload } from "../animation/payload";
 // the inputs cannot produce a document the API would reject.
 export { DESCRIPTION_MAX, NAME_MAX };
 
+/** Which robot an animation drives — fixed at creation, never edited. */
+export interface EditorRobot {
+  slug: string;
+  name: string;
+}
+
 /** What the editor needs to keep a document inside the robot's contract. */
 export interface RobotLimits {
   channels: number;
@@ -273,14 +279,12 @@ const ADDED_EASE = { easeInType: 1, easeOutType: 1, easeInMs: 150, easeOutMs: 15
 const NEW_DURATION_MS = 1000;
 
 /**
- * The document `/animations/new` opens on.
+ * The document `/animations/new` opens on: two motionless columns, unnamed.
  *
- * Two neutral columns rather than none: a payload needs at least one keyframe,
- * and a single one has no duration to draw a canvas across — the author would
- * be looking at an editor with nothing to grab. Two gives them a curve and a
- * span to work in, holding the robot's neutral pose, which is motionless until
- * something is dragged. The name is left empty on purpose: naming it is the one
- * thing only the author can do, and the Save button says so until they have.
+ * Two rather than one because a single keyframe has no duration for the canvas
+ * to draw across, leaving the author nothing to grab. The pose is the midpoint
+ * of the robot's range — the closest the validation profile gets to neutral,
+ * which is otherwise a rig fact carried in the model's own glTF extras.
  */
 export function newDocument(limits: RobotLimits): EditorDocument {
   const neutral = Array.from({ length: limits.channels }, () => Math.round(limits.maxAngle / 2));
@@ -338,6 +342,20 @@ export interface SaveRequest {
   expectedUpdatedAt: Date | null;
 }
 
+/**
+ * The document as the API takes it: trimmed to match `nameSchema` /
+ * `descriptionSchema`, so what comes back is what was sent and the fresh
+ * snapshot does not read as dirty.
+ */
+function writtenFields(document: EditorDocument) {
+  const description = document.description.trim();
+  return {
+    name: document.name.trim(),
+    description: description === "" ? null : description,
+    payload: document.payload,
+  };
+}
+
 export interface UpdateInput {
   id: string;
   name: string;
@@ -347,20 +365,14 @@ export interface UpdateInput {
 }
 
 /**
- * The `animations.update` input for a save.
- *
- * Trimming here matches `nameSchema` / `descriptionSchema` server-side, so what
- * comes back is what was sent and the fresh snapshot does not read as dirty.
- * Omitting `expectedUpdatedAt` — rather than sending `null` — is what makes the
- * overwrite branch of a conflict unguarded; the input is optional server-side.
+ * The `animations.update` input for a save. Omitting `expectedUpdatedAt` —
+ * rather than sending `null` — is what makes the overwrite branch of a conflict
+ * unguarded; the input is optional server-side.
  */
 export function updateInputFor(id: string, request: SaveRequest): UpdateInput {
-  const description = request.document.description.trim();
   return {
     id,
-    name: request.document.name.trim(),
-    description: description === "" ? null : description,
-    payload: request.document.payload,
+    ...writtenFields(request.document),
     ...(request.expectedUpdatedAt === null ? {} : { expectedUpdatedAt: request.expectedUpdatedAt }),
   };
 }
@@ -380,12 +392,11 @@ export interface CreateInput {
  * animation is for is fixed at creation and never edited afterwards.
  */
 export function createInputFor(robotSlug: string, request: SaveRequest): CreateInput {
-  const description = request.document.description.trim();
+  const { description, ...written } = writtenFields(request.document);
   return {
     robotSlug,
-    name: request.document.name.trim(),
-    // omitted rather than empty: `description` is optional server-side
-    ...(description === "" ? {} : { description }),
-    payload: request.document.payload,
+    ...written,
+    // omitted rather than null: `description` is optional on create
+    ...(description === null ? {} : { description }),
   };
 }

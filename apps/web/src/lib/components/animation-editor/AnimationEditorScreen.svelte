@@ -4,10 +4,7 @@
   Mounted per animation (the route keys on the id), so `animation` and `limits`
   are fixed for this component's life and the session state below can be opened
   once from them. A `null` animation is one that does not exist yet: the same
-  screen, opened on a default document, whose first Save creates it. Everything
-  downstream of that — undo, drafts, the leave guard, the conflict dialog —
-  works the same either way, which is the reason it is this component and not
-  a second one.
+  screen, opened on a default document, whose first Save creates it.
 
   All document state lives in `AnimationEditor` (`$lib/editor/editor-state`),
   which is immutable — every edit reassigns `editor`, which is both how Svelte
@@ -36,6 +33,7 @@
     NAME_MAX,
     newDocument,
     updateInputFor,
+    type EditorRobot,
     type RobotLimits,
   } from "$lib/editor/document";
   import {
@@ -54,8 +52,7 @@
   interface Props {
     /** `null` opens a brand-new animation, created by its first Save. */
     animation: LoadedAnimation | null;
-    /** Which robot this animation drives — fixed at creation, never edited. */
-    robot: { slug: string; name: string };
+    robot: EditorRobot;
     limits: RobotLimits;
   }
 
@@ -259,7 +256,7 @@
     try {
       const saved =
         id === null
-          ? await trpc().animations.create.mutate(createInputFor(robot.slug, request))
+          ? await trpc().animations.create.mutate(createInputFor(openedRobot.slug, request))
           : await trpc().animations.update.mutate(updateInputFor(id, request));
       // `editor`, not `started`: edits made while the save was in flight are
       // kept, and stay dirty until they are saved in their own right.
@@ -277,15 +274,10 @@
   /**
    * The animation now exists: settle onto its own URL and its own draft slot.
    *
-   * `replaceState` rather than a navigation — the session in front of the user
-   * is already the right one, and reloading it would throw away the undo stack
-   * and the viewer chunk to arrive at exactly what is on screen. The URL still
-   * has to change, so a refresh or a shared link lands on the animation rather
-   * than on a second blank editor.
-   *
-   * The shared "new" slot is discarded rather than moved: the document is on
-   * the server now, so there is nothing left for a draft to recover, and
-   * leaving it behind would offer this work back to the next new animation.
+   * `replaceState` rather than a navigation — reloading would throw away the
+   * undo stack and the viewer chunk to arrive at exactly what is already on
+   * screen, but the URL still has to change so a refresh lands on the animation
+   * rather than on a second blank editor.
    */
   function adoptCreated(id: string) {
     draftWriter.discard();
@@ -392,11 +384,15 @@
       </div>
     </div>
 
-    <!-- Only once there is something to save: a new editor opens nameless by
-         design, and greeting it with an error would be scolding the author for
-         not having typed yet. -->
-    {#if editor.nameIsEmpty && editor.dirty}
-      <p class="text-sm text-red-600 dark:text-red-400">
+    <!-- Said from the moment the editor opens nameless, so a disabled Save is
+         never unexplained — but only red once it is actually holding back work
+         that could otherwise be saved. -->
+    {#if editor.nameIsEmpty}
+      <p
+        class="text-sm {editor.dirty
+          ? 'text-red-600 dark:text-red-400'
+          : 'text-gray-500 dark:text-gray-400'}"
+      >
         An animation needs a name before it can be saved.
       </p>
     {/if}

@@ -300,7 +300,7 @@ describe("newDocument", () => {
     ]);
   });
 
-  it("takes its neutral pose and channel count from the robot, never robo-cat-ears", () => {
+  it("sizes and centres the pose on the robot's own range, never robo-cat-ears'", () => {
     const twoChannel = newDocument({ ...limits, channels: 2, maxAngle: 100 });
     expect(keyframesOf(twoChannel).map((each) => each.angles)).toEqual([
       [50, 50],
