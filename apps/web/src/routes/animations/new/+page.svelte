@@ -8,4 +8,4 @@
   let { data } = $props();
 </script>
 
-<AnimationEditorScreen animation={null} robot={data.robot} limits={data.limits} />
+<AnimationEditorScreen animation={null} robot={data.robot} limits={data.limits} visibility={null} />
