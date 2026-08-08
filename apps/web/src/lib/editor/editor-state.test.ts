@@ -189,6 +189,12 @@ describe("an out-of-band write to the row", () => {
   it("is a no-op when the version is one it already had", () => {
     expect(opened.rebasedTo(LOADED_AT)).toBe(opened);
   });
+
+  // a reply that lost a race, arriving after a save already moved the snapshot on
+  it("refuses to move the guard backwards", () => {
+    const bumped = opened.rebasedTo(BUMPED);
+    expect(bumped.rebasedTo(LOADED_AT)).toBe(bumped);
+  });
 });
 
 describe("drafts", () => {

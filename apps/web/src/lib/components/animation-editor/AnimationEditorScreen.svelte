@@ -17,9 +17,8 @@
   and not undoable; undo only moves it as a side effect, to show what it did.
 
   Who can *see* the animation is out of the document too, but for the opposite
-  reason: it is a decision that takes effect the moment it is confirmed, so that
-  Save can never publish by accident and Ctrl+Z can never unpublish by accident.
-  It is the one control here that writes on its own.
+  reason: it is the one control here that writes on its own, the moment it is
+  confirmed. See `$lib/editor/visibility`.
 -->
 <script lang="ts">
   import { Redo2, Undo2 } from "@lucide/svelte";
@@ -334,10 +333,9 @@
 
   // --- Who can see it ---------------------------------------------------------
   //
-  // The one control on this screen that writes on its own: no buffering, no
-  // undo step, nothing in the draft. What the document does and what this does
-  // deliberately have nothing to do with each other — the only thread between
-  // them is `rebasedTo`, which keeps a save from tripping over this write.
+  // Both writes touch one row's `updatedAt`, and a guard captured before the
+  // other lands is a conflict the user did not cause — so the two are kept
+  // strictly apart: neither control is available while the other is in flight.
 
   let visibility = $state(untrack(() => openedVisibility));
   let pendingVisibility = $state<Visibility | null>(null);
@@ -346,9 +344,8 @@
 
   function askVisibility(event: Event & { currentTarget: HTMLSelectElement }) {
     const chosen = visibilityOf(event.currentTarget.value);
-    // Straight back to the committed value: nothing has changed yet, and the
-    // select must not show a state the animation is not in while the dialog is
-    // still asking. Confirming is what moves it.
+    // Straight back to the committed value: the select must not show a state
+    // the animation is not in while the dialog is still asking about it.
     event.currentTarget.value = visibility ?? "private";
     if (chosen === null || chosen === visibility) return;
     pendingVisibility = chosen;
@@ -365,8 +362,6 @@
     try {
       const updated = await trpc().animations.setVisibility.mutate({ id, visibility: next });
       visibility = next;
-      // that write bumped the row, so the guard the next Save sends has to
-      // follow it — otherwise publishing mid-edit conflicts with itself
       editor = editor.rebasedTo(updated.updatedAt);
     } catch {
       visibilityError = "Could not change who can see this. Please try again.";
@@ -428,11 +423,11 @@
       // `editor`, not `started`: edits made while the save was in flight are
       // kept, and stay dirty until they are saved in their own right.
       editor = editor.saveSucceeded(saved);
-      // The row is authoritative about who can see it — which is how a brand-new
-      // animation learns it was created private, and how the control recovers if
-      // another tab changed it.
-      visibility = visibilityOf(saved.visibility) ?? visibility;
-      if (id === null) adoptCreated(saved.id);
+      if (id === null) {
+        // how a brand-new animation learns it was created private
+        visibility = visibilityOf(saved.visibility) ?? visibility;
+        adoptCreated(saved.id);
+      }
     } catch (thrown) {
       const failure = saveFailureFrom(thrown);
       editor =
@@ -500,16 +495,14 @@
       </div>
 
       <div class="flex shrink-0 items-center gap-3">
-        <!-- Deliberately not part of the document, and deliberately not next to
-             Save: choosing here writes straight away, once confirmed. Absent
-             until the animation exists, because there is nothing to publish. -->
+        <!-- Absent until the animation exists: nothing to publish yet. -->
         {#if visibility !== null}
           <label class="sr-only" for="animation-visibility">Who can see this</label>
           <select
             id="animation-visibility"
             value={visibility}
             onchange={askVisibility}
-            disabled={visibilityBusy}
+            disabled={visibilityBusy || editor.saving}
             class="rounded-md border border-gray-300 bg-transparent px-2 py-1.5 text-sm text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300"
           >
             {#each VISIBILITY_OPTIONS as option (option.value)}
@@ -569,7 +562,7 @@
         <button
           type="button"
           onclick={() => void save()}
-          disabled={!editor.canSave}
+          disabled={!editor.canSave || visibilityBusy}
           class="{primaryButtonClasses} disabled:opacity-50"
         >
           Save
@@ -764,11 +757,8 @@
 {/if}
 
 {#if pendingVisibility !== null}
-  <!--
-    The confirmation that keeps publishing deliberate. It asks about reach and
-    nothing else: the document is not mentioned, not sent, and not affected
-    either way this is answered.
-  -->
+  <!-- Reach and nothing else: the document is not mentioned, not sent, and not
+       affected either way this is answered. -->
   {@const prompt = visibilityPrompt(pendingVisibility)}
   <EditorDialog
     title={prompt.title}

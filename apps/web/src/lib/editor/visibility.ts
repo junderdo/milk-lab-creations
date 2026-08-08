@@ -1,14 +1,10 @@
 /**
  * Who can see an animation, and what the editor says before changing it.
  *
- * Visibility is the one thing the editor does not buffer. It is not part of the
+ * Visibility is the one thing the editor does not buffer: it is not part of the
  * document, so Save cannot publish by accident and Ctrl+Z cannot unpublish by
- * accident; the price is that changing it is an immediate write with its own
- * confirmation, which is what the copy here is for. The vocabulary lives beside
- * the document rather than inside it precisely so it cannot drift into one.
- *
- * `satisfies` against the router's own union is what keeps this list honest: a
- * fourth visibility server-side is a type error here, not a missing option.
+ * accident. The price is that changing it writes immediately, which is why the
+ * copy below is a confirmation rather than a label.
  */
 
 import type { Visibility } from "@milklab/api";
@@ -70,5 +66,9 @@ export function visibilityPrompt(to: Visibility): VisibilityPrompt {
         body: `Only you will be able to see it, and any link you have shared stops working. ${IMMEDIATE}`,
         confirmLabel: "Make private",
       };
+    default: {
+      const unhandled: never = to;
+      throw new Error(`unhandled visibility: ${String(unhandled)}`);
+    }
   }
 }
