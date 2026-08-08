@@ -20,6 +20,7 @@
   import { durationMs, sample, type Keyframe } from "$lib/animation/interpolator";
   import type { ChannelLabel } from "$lib/animation/robots";
   import { angleToY, channelPaths } from "$lib/animation/sparkline";
+  import { beginGripDrag, restingViewMs, type GripDrag } from "$lib/animation/view-window";
   import { easeTypesFor, type EasePatch, type RobotLimits } from "$lib/editor/document";
   import EasePopover from "./EasePopover.svelte";
 
@@ -79,6 +80,9 @@
   let canvas: HTMLDivElement | undefined = $state();
   let popoverOpen = $state(false);
 
+  /** Non-null exactly while a column grip is held. */
+  let gripDrag = $state<GripDrag | null>(null);
+
   /**
    * Channels are shown unless hidden — tracked as the hidden set rather than a
    * boolean per channel so it needs no initialising from `labels`, and so a
@@ -94,9 +98,13 @@
   const total = $derived(durationMs(keyframes));
   /**
    * The window drawn, always the whole animation (there is no zoom) plus a
-   * little headroom so the last column isn't welded to the right edge.
+   * little headroom so the last column isn't welded to the right edge — except
+   * while a grip is held, when it is whatever that gesture froze. Dragging the
+   * last column writes `total`, so a live window here rescales the canvas under
+   * the cursor and the grip stops tracking the pointer entirely; see
+   * `view-window.ts`.
    */
-  const viewMs = $derived(Math.max(total, 500) * 1.06);
+  const viewMs = $derived(gripDrag?.viewMs ?? restingViewMs(total));
 
   const paths = $derived(
     channelPaths(
@@ -241,12 +249,22 @@
   function dragGrip(event: PointerEvent, index: number) {
     event.stopPropagation();
     selectedIndex = index;
+    // Taken once, before the first move: from here on `timeAt` divides by a
+    // window this gesture cannot change, which is what lets the last column be
+    // dragged out to lengthen the animation at all.
+    gripDrag = beginGripDrag(total, index, keyframes.length, limits.maxTimeMs);
     drag(
       event,
       (moved) => ontime(index, timeAt(moved.clientX)),
-      oncommit,
+      () => {
+        gripDrag = null;
+        oncommit();
+      },
       // clicked, not dragged: select and show the easing, per the settled model
-      () => (popoverOpen = true),
+      () => {
+        gripDrag = null;
+        popoverOpen = true;
+      },
     );
   }
 
