@@ -222,6 +222,20 @@ export class AnimationEditor {
     return this.with(document, this.saved, this.status);
   }
 
+  /**
+   * The server's row moved, but not its document — take the new version.
+   *
+   * Visibility is written out-of-band, and that write bumps `updatedAt`. Left
+   * alone, the next guarded save would be rejected over a change the editor
+   * made itself. Nothing else moves: the document, dirty, and the undo stack
+   * are all as they were, which is the whole point of keeping visibility off
+   * the document.
+   */
+  rebasedTo(updatedAt: Date): AnimationEditor {
+    if (this.saved.updatedAt?.getTime() === updatedAt.getTime()) return this;
+    return this.with(this.document, { document: this.saved.document, updatedAt }, this.status);
+  }
+
   get nameIsEmpty(): boolean {
     return this.document.name.trim() === "";
   }

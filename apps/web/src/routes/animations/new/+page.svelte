@@ -8,4 +8,6 @@
   let { data } = $props();
 </script>
 
-<AnimationEditorScreen animation={null} robot={data.robot} limits={data.limits} />
+<!-- No visibility until there is an animation to have one; the first Save
+     reads it back off the row it creates. -->
+<AnimationEditorScreen animation={null} robot={data.robot} limits={data.limits} visibility={null} />

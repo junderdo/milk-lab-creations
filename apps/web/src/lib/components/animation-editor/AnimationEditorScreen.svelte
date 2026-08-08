@@ -15,6 +15,11 @@
   View state — playhead, selection, channel visibility — deliberately stays out
   of the editor. It is not part of the document, so it is not dirty, not saved
   and not undoable; undo only moves it as a side effect, to show what it did.
+
+  Who can *see* the animation is out of the document too, but for the opposite
+  reason: it is a decision that takes effect the moment it is confirmed, so that
+  Save can never publish by accident and Ctrl+Z can never unpublish by accident.
+  It is the one control here that writes on its own.
 -->
 <script lang="ts">
   import { Redo2, Undo2 } from "@lucide/svelte";
@@ -55,6 +60,12 @@
   } from "$lib/editor/timeline-height";
   import { humanizedSince } from "$lib/format/relative-time";
   import { saveFailureFrom } from "$lib/editor/save-error";
+  import {
+    VISIBILITY_OPTIONS,
+    visibilityOf,
+    visibilityPrompt,
+    type Visibility,
+  } from "$lib/editor/visibility";
   import { trpc } from "$lib/trpc";
 
   interface Props {
@@ -62,9 +73,11 @@
     animation: LoadedAnimation | null;
     robot: EditorRobot;
     limits: RobotLimits;
+    /** `null` until the animation exists — there is nothing to publish yet. */
+    visibility: Visibility | null;
   }
 
-  let { animation, robot, limits }: Props = $props();
+  let { animation, robot, limits, visibility: openedVisibility }: Props = $props();
 
   // Read once, deliberately: the route keys on the animation id, so a different
   // animation is a different mount. `untrack` says that rather than leaving a
@@ -319,11 +332,57 @@
     setHeight(timelineHeight + delta);
   }
 
-  // `inert` rather than an overlay alone: every one of these dialogs is a
-  // decision about the document, and a Tab key that reaches the timeline behind
-  // it would let the document move while the question is still open.
+  // --- Who can see it ---------------------------------------------------------
+  //
+  // The one control on this screen that writes on its own: no buffering, no
+  // undo step, nothing in the draft. What the document does and what this does
+  // deliberately have nothing to do with each other — the only thread between
+  // them is `rebasedTo`, which keeps a save from tripping over this write.
+
+  let visibility = $state(untrack(() => openedVisibility));
+  let pendingVisibility = $state<Visibility | null>(null);
+  let visibilityBusy = $state(false);
+  let visibilityError = $state<string | null>(null);
+
+  function askVisibility(event: Event & { currentTarget: HTMLSelectElement }) {
+    const chosen = visibilityOf(event.currentTarget.value);
+    // Straight back to the committed value: nothing has changed yet, and the
+    // select must not show a state the animation is not in while the dialog is
+    // still asking. Confirming is what moves it.
+    event.currentTarget.value = visibility ?? "private";
+    if (chosen === null || chosen === visibility) return;
+    pendingVisibility = chosen;
+  }
+
+  async function applyVisibility() {
+    const next = pendingVisibility;
+    const id = editor.animationId;
+    pendingVisibility = null;
+    if (next === null || id === null) return;
+
+    visibilityBusy = true;
+    visibilityError = null;
+    try {
+      const updated = await trpc().animations.setVisibility.mutate({ id, visibility: next });
+      visibility = next;
+      // that write bumped the row, so the guard the next Save sends has to
+      // follow it — otherwise publishing mid-edit conflicts with itself
+      editor = editor.rebasedTo(updated.updatedAt);
+    } catch {
+      visibilityError = "Could not change who can see this. Please try again.";
+    } finally {
+      visibilityBusy = false;
+    }
+  }
+
+  // `inert` rather than an overlay alone: each of these dialogs is a question
+  // that has to be answered, and a Tab key reaching the timeline behind it would
+  // let the document move while it is still open.
   const dialogOpen = $derived(
-    draftOffer !== null || editor.conflict !== null || leaveTarget !== null,
+    draftOffer !== null ||
+      editor.conflict !== null ||
+      leaveTarget !== null ||
+      pendingVisibility !== null,
   );
 
   const primaryButtonClasses =
@@ -369,6 +428,10 @@
       // `editor`, not `started`: edits made while the save was in flight are
       // kept, and stay dirty until they are saved in their own right.
       editor = editor.saveSucceeded(saved);
+      // The row is authoritative about who can see it — which is how a brand-new
+      // animation learns it was created private, and how the control recovers if
+      // another tab changed it.
+      visibility = visibilityOf(saved.visibility) ?? visibility;
       if (id === null) adoptCreated(saved.id);
     } catch (thrown) {
       const failure = saveFailureFrom(thrown);
@@ -437,6 +500,25 @@
       </div>
 
       <div class="flex shrink-0 items-center gap-3">
+        <!-- Deliberately not part of the document, and deliberately not next to
+             Save: choosing here writes straight away, once confirmed. Absent
+             until the animation exists, because there is nothing to publish. -->
+        {#if visibility !== null}
+          <label class="sr-only" for="animation-visibility">Who can see this</label>
+          <select
+            id="animation-visibility"
+            value={visibility}
+            onchange={askVisibility}
+            disabled={visibilityBusy}
+            class="rounded-md border border-gray-300 bg-transparent px-2 py-1.5 text-sm text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300"
+          >
+            {#each VISIBILITY_OPTIONS as option (option.value)}
+              <option value={option.value} class="dark:bg-gray-950">
+                {option.label} · {option.summary}
+              </option>
+            {/each}
+          </select>
+        {/if}
         <!-- Buttons as well as shortcuts: this is the only place the stack
              is visible at all, and a pointer has no Ctrl+Z. -->
         <span class="flex items-center gap-1">
@@ -525,6 +607,18 @@
         {editor.document.description.length} / {DESCRIPTION_MAX}
       </p>
     </div>
+
+    {#if visibilityError !== null}
+      <div
+        role="alert"
+        class="flex items-center justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+      >
+        <span>{visibilityError}</span>
+        <button type="button" class="underline" onclick={() => (visibilityError = null)}>
+          Dismiss
+        </button>
+      </div>
+    {/if}
 
     {#if editor.errorMessage !== null}
       <div
@@ -666,6 +760,22 @@
     Probably another tab or device. Saving now would overwrite
     <b class="font-medium">{editor.conflict.name}</b>, saved
     {editor.conflict.updatedAt.toLocaleString()}.
+  </EditorDialog>
+{/if}
+
+{#if pendingVisibility !== null}
+  <!--
+    The confirmation that keeps publishing deliberate. It asks about reach and
+    nothing else: the document is not mentioned, not sent, and not affected
+    either way this is answered.
+  -->
+  {@const prompt = visibilityPrompt(pendingVisibility)}
+  <EditorDialog
+    title={prompt.title}
+    confirm={{ label: prompt.confirmLabel, onclick: () => void applyVisibility() }}
+    dismiss={{ label: "Cancel", onclick: () => (pendingVisibility = null) }}
+  >
+    {prompt.body}
   </EditorDialog>
 {/if}
 

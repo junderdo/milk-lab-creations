@@ -161,12 +161,45 @@ describe("save", () => {
   });
 });
 
+describe("an out-of-band write to the row", () => {
+  const BUMPED = new Date("2026-08-05T12:30:00.000Z");
+
+  it("moves the guard on without touching the document, dirty or history", () => {
+    const edited = opened.setName("Renamed");
+    const rebased = edited.rebasedTo(BUMPED);
+
+    expect(rebased.baseUpdatedAt).toEqual(BUMPED);
+    expect(rebased.document).toEqual(edited.document);
+    expect(rebased.dirty).toBe(true);
+    expect(rebased.canUndo).toBe(true);
+    expect(rebased.undone().document).toEqual(opened.document);
+  });
+
+  it("leaves a clean editor clean", () => {
+    expect(opened.rebasedTo(BUMPED).dirty).toBe(false);
+  });
+
+  // publishing mid-edit bumps `updatedAt`; without this the very next Save
+  // would be rejected for a change the editor made itself
+  it("keeps the next guarded save from conflicting with itself", () => {
+    const saving = opened.setName("Renamed").rebasedTo(BUMPED).saveStarted();
+    expect(saving.pendingRequest?.expectedUpdatedAt).toEqual(BUMPED);
+  });
+
+  it("is a no-op when the version is one it already had", () => {
+    expect(opened.rebasedTo(LOADED_AT)).toBe(opened);
+  });
+});
+
 describe("drafts", () => {
   it("exposes the server version a draft would be written on top of", () => {
     expect(opened.baseUpdatedAt).toEqual(LOADED_AT);
 
     const savedAt = new Date("2026-08-05T13:00:00.000Z");
-    const saved = opened.setName("Renamed").saveStarted().saveSucceeded(record({ updatedAt: savedAt }));
+    const saved = opened
+      .setName("Renamed")
+      .saveStarted()
+      .saveSucceeded(record({ updatedAt: savedAt }));
     expect(saved.baseUpdatedAt).toEqual(savedAt);
   });
 
@@ -195,11 +228,7 @@ describe("undo", () => {
   });
 
   it("treats one drag as one step, whatever it moved through", () => {
-    const dragged = opened
-      .setAngle(1, 0, 60)
-      .setAngle(1, 0, 75)
-      .setAngle(1, 0, 41)
-      .editCommitted();
+    const dragged = opened.setAngle(1, 0, 60).setAngle(1, 0, 75).setAngle(1, 0, 41).editCommitted();
 
     const undone = dragged.undone();
     expect(keyframesOf(undone.document)[1]?.angles[0]).toBe(40);
@@ -209,11 +238,7 @@ describe("undo", () => {
   });
 
   it("keeps two separate drags as two steps", () => {
-    const twice = opened
-      .setAngle(1, 0, 41)
-      .editCommitted()
-      .setAngle(1, 0, 42)
-      .editCommitted();
+    const twice = opened.setAngle(1, 0, 41).editCommitted().setAngle(1, 0, 42).editCommitted();
 
     expect(keyframesOf(twice.undone().document)[1]?.angles[0]).toBe(41);
   });

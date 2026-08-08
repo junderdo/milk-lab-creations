@@ -6,10 +6,16 @@
 -->
 <script lang="ts">
   import AnimationEditorScreen from "$lib/components/animation-editor/AnimationEditorScreen.svelte";
+  import { visibilityOf } from "$lib/editor/visibility";
 
   let { data } = $props();
 </script>
 
 {#key data.animation.id}
-  <AnimationEditorScreen animation={data.animation} robot={data.robot} limits={data.limits} />
+  <AnimationEditorScreen
+    animation={data.animation}
+    robot={data.robot}
+    limits={data.limits}
+    visibility={visibilityOf(data.animation.visibility)}
+  />
 {/key}
