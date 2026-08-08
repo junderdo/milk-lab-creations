@@ -25,6 +25,12 @@ import { keyframesFromPayload } from "../animation/payload";
 // the inputs cannot produce a document the API would reject.
 export { DESCRIPTION_MAX, NAME_MAX };
 
+/** Which robot an animation drives — fixed at creation, never edited. */
+export interface EditorRobot {
+  slug: string;
+  name: string;
+}
+
 /** What the editor needs to keep a document inside the robot's contract. */
 export interface RobotLimits {
   channels: number;
@@ -269,6 +275,32 @@ export function insertionIndexFor(keyframes: Keyframe[], timeMs: number): number
 /** Ease used by a column added mid-edit: the payload's own default shape. */
 const ADDED_EASE = { easeInType: 1, easeOutType: 1, easeInMs: 150, easeOutMs: 150 } as const;
 
+/** Long enough to be a motion, short enough to be retimed in one drag. */
+const NEW_DURATION_MS = 1000;
+
+/**
+ * The document `/animations/new` opens on: two motionless columns, unnamed.
+ *
+ * Two rather than one because a single keyframe has no duration for the canvas
+ * to draw across, leaving the author nothing to grab. The pose is the midpoint
+ * of the robot's range — the closest the validation profile gets to neutral,
+ * which is otherwise a rig fact carried in the model's own glTF extras.
+ */
+export function newDocument(limits: RobotLimits): EditorDocument {
+  const neutral = Array.from({ length: limits.channels }, () => Math.round(limits.maxAngle / 2));
+  return {
+    name: "",
+    description: "",
+    payload: {
+      schemaVersion: 1,
+      keyframes: [
+        { timeMs: 0, angles: neutral, ...ADDED_EASE },
+        { timeMs: NEW_DURATION_MS, angles: [...neutral], ...ADDED_EASE },
+      ],
+    },
+  };
+}
+
 /**
  * Insert a column at `timeMs`, holding the pose the animation already has there.
  *
@@ -310,6 +342,20 @@ export interface SaveRequest {
   expectedUpdatedAt: Date | null;
 }
 
+/**
+ * The document as the API takes it: trimmed to match `nameSchema` /
+ * `descriptionSchema`, so what comes back is what was sent and the fresh
+ * snapshot does not read as dirty.
+ */
+function writtenFields(document: EditorDocument) {
+  const description = document.description.trim();
+  return {
+    name: document.name.trim(),
+    description: description === "" ? null : description,
+    payload: document.payload,
+  };
+}
+
 export interface UpdateInput {
   id: string;
   name: string;
@@ -319,20 +365,38 @@ export interface UpdateInput {
 }
 
 /**
- * The `animations.update` input for a save.
- *
- * Trimming here matches `nameSchema` / `descriptionSchema` server-side, so what
- * comes back is what was sent and the fresh snapshot does not read as dirty.
- * Omitting `expectedUpdatedAt` — rather than sending `null` — is what makes the
- * overwrite branch of a conflict unguarded; the input is optional server-side.
+ * The `animations.update` input for a save. Omitting `expectedUpdatedAt` —
+ * rather than sending `null` — is what makes the overwrite branch of a conflict
+ * unguarded; the input is optional server-side.
  */
 export function updateInputFor(id: string, request: SaveRequest): UpdateInput {
-  const description = request.document.description.trim();
   return {
     id,
-    name: request.document.name.trim(),
-    description: description === "" ? null : description,
-    payload: request.document.payload,
+    ...writtenFields(request.document),
     ...(request.expectedUpdatedAt === null ? {} : { expectedUpdatedAt: request.expectedUpdatedAt }),
+  };
+}
+
+export interface CreateInput {
+  robotSlug: string;
+  name: string;
+  description?: string;
+  payload: EditorPayload;
+}
+
+/**
+ * The `animations.create` input for the first save of a new animation.
+ *
+ * There is no guard to send — nothing exists yet to be stale against — and the
+ * robot comes from the route rather than the document, because which robot an
+ * animation is for is fixed at creation and never edited afterwards.
+ */
+export function createInputFor(robotSlug: string, request: SaveRequest): CreateInput {
+  const { description, ...written } = writtenFields(request.document);
+  return {
+    robotSlug,
+    ...written,
+    // omitted rather than null: `description` is optional on create
+    ...(description === null ? {} : { description }),
   };
 }

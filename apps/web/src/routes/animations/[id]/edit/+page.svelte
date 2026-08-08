@@ -11,5 +11,5 @@
 </script>
 
 {#key data.animation.id}
-  <AnimationEditorScreen animation={data.animation} limits={data.limits} />
+  <AnimationEditorScreen animation={data.animation} robot={data.robot} limits={data.limits} />
 {/key}

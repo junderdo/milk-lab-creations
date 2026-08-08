@@ -54,17 +54,24 @@ export type SaveStatus =
   | { kind: "conflict"; server: LoadedAnimation; request: SaveRequest }
   | { kind: "failed"; message: string };
 
-/** The document as last known to be on the server, and when that was. */
+/**
+ * The document as last known to be on the server, and when that was.
+ *
+ * `updatedAt` is `null` for an animation the server has never seen: the
+ * document it is compared against is then the one the editor opened on, which
+ * is what makes an untouched new editor clean.
+ */
 interface SavedSnapshot {
   document: EditorDocument;
-  updatedAt: Date;
+  updatedAt: Date | null;
 }
 
 /** Amber from here up — enough warning to finish a thought before the cap. */
 const NEAR_CAP_FRACTION = 0.87;
 
 export class AnimationEditor {
-  readonly animationId: string;
+  /** `null` until the first save creates the animation server-side. */
+  readonly animationId: string | null;
   readonly limits: RobotLimits;
   readonly document: EditorDocument;
   readonly status: SaveStatus;
@@ -75,7 +82,7 @@ export class AnimationEditor {
   private readonly now: () => number;
 
   private constructor(
-    animationId: string,
+    animationId: string | null,
     limits: RobotLimits,
     document: EditorDocument,
     saved: SavedSnapshot,
@@ -119,15 +126,39 @@ export class AnimationEditor {
     );
   }
 
+  /**
+   * Open a blank editor for an animation that does not exist yet.
+   *
+   * The default document doubles as the saved snapshot, so the editor is clean
+   * on arrival and only the first real edit makes leaving cost anything.
+   */
+  static forNewAnimation(
+    document: EditorDocument,
+    limits: RobotLimits,
+    now: () => number = Date.now,
+  ): AnimationEditor {
+    return new AnimationEditor(
+      null,
+      limits,
+      document,
+      { document, updatedAt: null },
+      { kind: "idle" },
+      DocumentHistory.empty(),
+      null,
+      now,
+    );
+  }
+
   private with(
     document: EditorDocument,
     saved: SavedSnapshot,
     status: SaveStatus,
     history: DocumentHistory = this.history,
     reveal: Reveal = null,
+    animationId: string | null = this.animationId,
   ) {
     return new AnimationEditor(
-      this.animationId,
+      animationId,
       this.limits,
       document,
       saved,
@@ -171,8 +202,13 @@ export class AnimationEditor {
   }
 
   /** The server version the document is edited on top of — what a draft records. */
-  get baseUpdatedAt(): Date {
+  get baseUpdatedAt(): Date | null {
     return this.saved.updatedAt;
+  }
+
+  /** No animation exists yet: the first save creates one rather than updating. */
+  get isNew(): boolean {
+    return this.animationId === null;
   }
 
   /**
@@ -335,6 +371,9 @@ export class AnimationEditor {
    * The snapshot becomes that row rather than the document that was sent: the
    * server trims name and description, and adopting its version is what stops a
    * successful save from leaving the editor immediately dirty again.
+   *
+   * A create answers with the row it made, so this is also where a new
+   * animation stops being new — from here on it saves like any other.
    */
   saveSucceeded(record: LoadedAnimation): AnimationEditor {
     if (this.status.kind !== "saving") return this;
@@ -345,6 +384,9 @@ export class AnimationEditor {
       wasOnlyChange ? document : this.document,
       { document, updatedAt: record.updatedAt },
       { kind: "idle" },
+      this.history,
+      null,
+      record.id,
     );
   }
 

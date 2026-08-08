@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { AnimationEditor, type LoadedAnimation } from "./editor-state";
-import { keyframesOf, limitsFor } from "./document";
+import { keyframesOf, limitsFor, newDocument } from "./document";
 
 const limits = limitsFor("robo-cat-ears");
 if (limits === undefined) throw new Error("robo-cat-ears must have a validation profile");
@@ -373,5 +373,68 @@ describe("conflict", () => {
     expect(opened.saveConflicted(newer)).toBe(opened);
     expect(opened.overwriteRequested()).toBe(opened);
     expect(opened.serverAdopted()).toBe(opened);
+  });
+});
+
+describe("a brand-new animation", () => {
+  const started = AnimationEditor.forNewAnimation(newDocument(limits), limits);
+
+  it("has no id and no server version yet", () => {
+    expect(started.animationId).toBeNull();
+    expect(started.isNew).toBe(true);
+    expect(started.baseUpdatedAt).toBeNull();
+  });
+
+  it("is clean until the first real edit, so leaving it costs nothing", () => {
+    expect(started.dirty).toBe(false);
+    expect(started.canSave).toBe(false);
+    expect(started.setName("Ear wiggle").dirty).toBe(true);
+  });
+
+  it("still refuses to save without a name", () => {
+    expect(started.setAngle(1, 0, 120).canSave).toBe(false);
+    expect(started.setAngle(1, 0, 120).nameIsEmpty).toBe(true);
+  });
+
+  it("saves with no guard — there is no version to be stale against", () => {
+    const saving = started.setName("Ear wiggle").saveStarted();
+    expect(saving.pendingRequest).toEqual({
+      document: saving.document,
+      expectedUpdatedAt: null,
+    });
+  });
+
+  it("becomes an ordinary editor session on the record the server created", () => {
+    const createdAt = new Date("2026-08-05T13:00:00.000Z");
+    const saved = started
+      .setName("Ear wiggle")
+      .saveStarted()
+      .saveSucceeded(record({ id: "anim-new", name: "Ear wiggle", updatedAt: createdAt }));
+
+    expect(saved.animationId).toBe("anim-new");
+    expect(saved.isNew).toBe(false);
+    expect(saved.dirty).toBe(false);
+    // the next save is guarded like any other — the create supplied the version
+    expect(saved.setName("Renamed").saveStarted().pendingRequest?.expectedUpdatedAt).toEqual(
+      createdAt,
+    );
+  });
+
+  it("keeps the undo stack across the create, as a save is not a barrier", () => {
+    const saved = started
+      .setName("Ear wiggle")
+      .editCommitted()
+      .saveStarted()
+      .saveSucceeded(record({ id: "anim-new", name: "Ear wiggle" }));
+
+    expect(saved.canUndo).toBe(true);
+    expect(saved.undone().document.name).toBe("");
+    expect(saved.undone().dirty).toBe(true);
+  });
+
+  it("restores a draft from the new slot the same way as any other", () => {
+    const restored = started.draftRestored({ ...started.document, name: "From a closed tab" });
+    expect(restored.dirty).toBe(true);
+    expect(restored.saveStarted().pendingRequest?.expectedUpdatedAt).toBeNull();
   });
 });

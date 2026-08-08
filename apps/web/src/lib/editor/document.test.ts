@@ -8,6 +8,8 @@ import {
   keyframesOf,
   easeTypesFor,
   limitsFor,
+  createInputFor,
+  newDocument,
   removeKeyframe,
   revealOf,
   setAngle,
@@ -280,5 +282,55 @@ describe("updateInputFor", () => {
   it("omits the guard entirely when the caller has chosen to overwrite", () => {
     const input = updateInputFor("anim-1", { document: doc, expectedUpdatedAt: null });
     expect("expectedUpdatedAt" in input).toBe(false);
+  });
+});
+
+describe("newDocument", () => {
+  const fresh = newDocument(limits);
+
+  it("is nameless, so the first thing asked of the author is what to call it", () => {
+    expect(fresh.name).toBe("");
+    expect(fresh.description).toBe("");
+  });
+
+  it("opens on two neutral columns — a curve to drag, not an empty canvas", () => {
+    expect(keyframesOf(fresh)).toEqual([
+      frame(0, [90, 90, 90, 90]),
+      frame(1000, [90, 90, 90, 90]),
+    ]);
+  });
+
+  it("sizes and centres the pose on the robot's own range, never robo-cat-ears'", () => {
+    const twoChannel = newDocument({ ...limits, channels: 2, maxAngle: 100 });
+    expect(keyframesOf(twoChannel).map((each) => each.angles)).toEqual([
+      [50, 50],
+      [50, 50],
+    ]);
+  });
+
+  it("is comparable to itself, so an untouched new editor reads as clean", () => {
+    expect(documentsEqual(fresh, newDocument(limits))).toBe(true);
+  });
+});
+
+describe("createInputFor", () => {
+  it("names the robot and sends the trimmed document, with no guard to send", () => {
+    expect(
+      createInputFor("robo-cat-ears", {
+        document: setDescription(setName(doc, "  Wiggle  "), "  ears  "),
+        expectedUpdatedAt: null,
+      }),
+    ).toEqual({
+      robotSlug: "robo-cat-ears",
+      name: "Wiggle",
+      description: "ears",
+      payload: { schemaVersion: 1, keyframes: keyframesOf(doc) },
+    });
+  });
+
+  it("sends no description rather than an empty one", () => {
+    expect(
+      createInputFor("robo-cat-ears", { document: doc, expectedUpdatedAt: null }).description,
+    ).toBeUndefined();
   });
 });

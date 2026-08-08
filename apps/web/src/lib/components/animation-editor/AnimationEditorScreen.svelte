@@ -3,7 +3,8 @@
 
   Mounted per animation (the route keys on the id), so `animation` and `limits`
   are fixed for this component's life and the session state below can be opened
-  once from them.
+  once from them. A `null` animation is one that does not exist yet: the same
+  screen, opened on a default document, whose first Save creates it.
 
   All document state lives in `AnimationEditor` (`$lib/editor/editor-state`),
   which is immutable — every edit reassigns `editor`, which is both how Svelte
@@ -18,7 +19,7 @@
 <script lang="ts">
   import { Redo2, Undo2 } from "@lucide/svelte";
   import { onDestroy, onMount, untrack } from "svelte";
-  import { beforeNavigate, goto } from "$app/navigation";
+  import { beforeNavigate, goto, replaceState } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { channelLabelsFor, modelUrlFor } from "$lib/animation/robots";
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
@@ -26,10 +27,13 @@
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
   import EditorDialog from "./EditorDialog.svelte";
   import {
+    createInputFor,
     DESCRIPTION_MAX,
     insertionIndexFor,
     NAME_MAX,
+    newDocument,
     updateInputFor,
+    type EditorRobot,
     type RobotLimits,
   } from "$lib/editor/document";
   import {
@@ -46,27 +50,29 @@
   import { trpc } from "$lib/trpc";
 
   interface Props {
-    animation: LoadedAnimation & { robot: { slug: string; name: string } | null };
+    /** `null` opens a brand-new animation, created by its first Save. */
+    animation: LoadedAnimation | null;
+    robot: EditorRobot;
     limits: RobotLimits;
   }
 
-  let { animation, limits }: Props = $props();
+  let { animation, robot, limits }: Props = $props();
 
   // Read once, deliberately: the route keys on the animation id, so a different
   // animation is a different mount. `untrack` says that rather than leaving a
   // "did you mean a derived?" warning for the next reader to re-litigate.
   const opened = untrack(() => animation);
-  const robot = opened.robot;
-  const labels = channelLabelsFor(robot?.slug, untrack(() => limits).channels);
-  const modelUrl = robot === null ? null : modelUrlFor(robot.slug);
+  const openedLimits = untrack(() => limits);
+  const openedRobot = untrack(() => robot);
+  const labels = channelLabelsFor(openedRobot.slug, openedLimits.channels);
+  const modelUrl = modelUrlFor(openedRobot.slug);
 
   // Not deeply proxied: Svelte leaves class instances alone, so reactivity is
   // exactly the reassignments below and never a half-applied mutation mid-drag.
   let editor = $state(
-    AnimationEditor.open(
-      opened,
-      untrack(() => limits),
-    ),
+    opened === null
+      ? AnimationEditor.forNewAnimation(newDocument(openedLimits), openedLimits)
+      : AnimationEditor.open(opened, openedLimits),
   );
 
   let playheadMs = $state(0);
@@ -75,9 +81,11 @@
   let nameInput: HTMLInputElement | undefined = $state();
   let descriptionInput: HTMLTextAreaElement | undefined = $state();
 
-  const draftKey = draftKeyFor(opened.id);
+  const draftKey = draftKeyFor(opened?.id ?? null);
   const draftStorage = localDraftStorage();
-  const draftWriter = new DraftWriter({ storage: draftStorage, key: draftKey });
+  // Reassigned once, if a create turns the shared "new" slot into this
+  // animation's own — every other reference is to whichever writer is current.
+  let draftWriter = new DraftWriter({ storage: draftStorage, key: draftKey });
 
   // Answered before the document is allowed to move: writing a draft over the
   // one being offered would destroy the very work the dialog is offering back.
@@ -242,15 +250,18 @@
   async function runPendingSave(started: AnimationEditor) {
     const request = started.pendingRequest;
     if (request === null) return; // nothing to save, or a save already in flight
+    const id = started.animationId;
     editor = started;
 
     try {
-      const saved = await trpc().animations.update.mutate(
-        updateInputFor(started.animationId, request),
-      );
+      const saved =
+        id === null
+          ? await trpc().animations.create.mutate(createInputFor(openedRobot.slug, request))
+          : await trpc().animations.update.mutate(updateInputFor(id, request));
       // `editor`, not `started`: edits made while the save was in flight are
       // kept, and stay dirty until they are saved in their own right.
       editor = editor.saveSucceeded(saved);
+      if (id === null) adoptCreated(saved.id);
     } catch (thrown) {
       const failure = saveFailureFrom(thrown);
       editor =
@@ -258,6 +269,20 @@
           ? editor.saveConflicted(failure.server)
           : editor.saveFailed(failure.message);
     }
+  }
+
+  /**
+   * The animation now exists: settle onto its own URL and its own draft slot.
+   *
+   * `replaceState` rather than a navigation — reloading would throw away the
+   * undo stack and the viewer chunk to arrive at exactly what is already on
+   * screen, but the URL still has to change so a refresh lands on the animation
+   * rather than on a second blank editor.
+   */
+  function adoptCreated(id: string) {
+    draftWriter.discard();
+    draftWriter = new DraftWriter({ storage: draftStorage, key: draftKeyFor(id) });
+    replaceState(resolve("/animations/[id]/edit", { id }), {});
   }
 
   async function save() {
@@ -274,7 +299,9 @@
   }
 </script>
 
-<svelte:head><title>Editing {editor.document.name}</title></svelte:head>
+<svelte:head>
+  <title>{editor.isNew ? "New animation" : `Editing ${editor.document.name}`}</title>
+</svelte:head>
 <svelte:window onkeydown={onHistoryKeydown} onpagehide={() => draftWriter.flush()} />
 <svelte:document onvisibilitychange={flushDraftIfHidden} />
 
@@ -328,16 +355,24 @@
             Saving…
           {:else if editor.dirty}
             Unsaved changes
+          {:else if editor.isNew}
+            Not saved yet
           {:else}
             Saved
           {/if}
         </span>
-        <a
-          href={resolve("/animations/[id]", { id: editor.animationId })}
-          class={secondaryButtonClasses}
-        >
-          Done
-        </a>
+        <!-- Leaving goes to the animation's own page once it has one, and to
+             the list it will join until then. -->
+        {#if editor.animationId === null}
+          <a href={resolve("/my")} class={secondaryButtonClasses}>Cancel</a>
+        {:else}
+          <a
+            href={resolve("/animations/[id]", { id: editor.animationId })}
+            class={secondaryButtonClasses}
+          >
+            Done
+          </a>
+        {/if}
         <button
           type="button"
           onclick={() => void save()}
@@ -349,8 +384,15 @@
       </div>
     </div>
 
+    <!-- Said from the moment the editor opens nameless, so a disabled Save is
+         never unexplained — but only red once it is actually holding back work
+         that could otherwise be saved. -->
     {#if editor.nameIsEmpty}
-      <p class="text-sm text-red-600 dark:text-red-400">
+      <p
+        class="text-sm {editor.dirty
+          ? 'text-red-600 dark:text-red-400'
+          : 'text-gray-500 dark:text-gray-400'}"
+      >
         An animation needs a name before it can be saved.
       </p>
     {/if}

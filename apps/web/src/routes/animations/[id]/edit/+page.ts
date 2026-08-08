@@ -32,10 +32,11 @@ export const load: PageLoad = async ({ fetch, params, parent }) => {
   // Without a validation profile there are no limits to keep edits inside, and
   // every save would be rejected server-side. Better to say so than to open an
   // editor that cannot produce a document this robot accepts.
-  const limits = limitsFor(animation.robot?.slug);
-  if (limits === undefined) {
-    error(501, `${animation.robot?.name ?? "This robot"} can't be edited yet`);
+  const robot = animation.robot;
+  const limits = robot === null ? undefined : limitsFor(robot.slug);
+  if (robot === null || limits === undefined) {
+    error(501, `${robot?.name ?? "This robot"} can't be edited yet`);
   }
 
-  return { animation, limits };
+  return { animation, robot, limits };
 };
