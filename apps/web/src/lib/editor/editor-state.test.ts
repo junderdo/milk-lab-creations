@@ -323,6 +323,19 @@ describe("conflict", () => {
     );
   });
 
+  it("holds undo still until the conflict is answered", () => {
+    // the dialog covers the canvas but not the keyboard: undoing behind it would
+    // move the document out from under an Overwrite that still resends what the
+    // server rejected
+    expect(conflicted.canUndo).toBe(false);
+    expect(conflicted.undone()).toBe(conflicted);
+    expect(conflicted.redone()).toBe(conflicted);
+  });
+
+  it("gives undo back once the conflict is resolved", () => {
+    expect(conflicted.serverAdopted().canUndo).toBe(true);
+  });
+
   it("makes discarding mine undoable — the stack is what stops that being a loss", () => {
     const discarded = conflicted.serverAdopted();
     expect(discarded.canUndo).toBe(true);

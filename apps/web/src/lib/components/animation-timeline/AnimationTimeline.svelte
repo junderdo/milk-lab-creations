@@ -152,8 +152,8 @@
   function drag(
     event: PointerEvent,
     onMove: (event: PointerEvent) => void,
-    onTap?: () => void,
     onEnd?: () => void,
+    onTap?: () => void,
   ) {
     const target = event.currentTarget;
     if (!(target instanceof Element)) return;
@@ -234,16 +234,16 @@
     drag(
       event,
       (moved) => ontime(index, timeAt(moved.clientX)),
+      oncommit,
       // clicked, not dragged: select and show the easing, per the settled model
       () => (popoverOpen = true),
-      oncommit,
     );
   }
 
   function dragDot(event: PointerEvent, index: number, channel: number) {
     event.stopPropagation();
     selectedIndex = index;
-    drag(event, (moved) => onangle(index, channel, angleAt(moved.clientY)), undefined, oncommit);
+    drag(event, (moved) => onangle(index, channel, angleAt(moved.clientY)), oncommit);
   }
 
   function easeFor(patch: EasePatch) {

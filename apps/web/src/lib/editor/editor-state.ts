@@ -68,11 +68,7 @@ export class AnimationEditor {
   readonly limits: RobotLimits;
   readonly document: EditorDocument;
   readonly status: SaveStatus;
-  /**
-   * Where the last undo or redo landed, for the view to follow — `null` after
-   * an ordinary edit, which reveals itself by virtue of being the thing the
-   * user just did. The view acts on it; it is never part of a step.
-   */
+  /** Where the last undo or redo landed; `null` after an ordinary edit. */
   readonly reveal: Reveal;
   private readonly saved: SavedSnapshot;
   private readonly history: DocumentHistory;
@@ -250,22 +246,32 @@ export class AnimationEditor {
       : this.with(this.document, this.saved, this.status, history, this.reveal);
   }
 
+  /**
+   * A conflict freezes the history.
+   *
+   * Overwrite resends the document the server rejected, so a document moved by
+   * undo behind the dialog would not be the one that gets saved. Both choices
+   * hand undo straight back.
+   */
+  private get historyFrozen(): boolean {
+    return this.status.kind === "conflict";
+  }
+
   get canUndo(): boolean {
-    return this.history.committed(this.document).canUndo;
+    return !this.historyFrozen && this.history.committed(this.document).canUndo;
   }
 
   get canRedo(): boolean {
-    return this.history.canRedo;
+    return !this.historyFrozen && this.history.canRedo;
   }
 
   /**
-   * Step back, and say where the change was so the view can go and show it.
-   *
    * Undo is deliberately blind to the save machine: the stack survives a save,
    * so undoing past a save point simply makes the document dirty again — which
    * needs no code here, because dirty is a comparison against the snapshot.
    */
   undone(): AnimationEditor {
+    if (this.historyFrozen) return this;
     const committed = this.editCommitted();
     const move = committed.history.undo(committed.document);
     if (move === null) return this;
@@ -279,6 +285,7 @@ export class AnimationEditor {
   }
 
   redone(): AnimationEditor {
+    if (this.historyFrozen) return this;
     const move = this.history.redo(this.document);
     if (move === null) return this;
     return this.with(

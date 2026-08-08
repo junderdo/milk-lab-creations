@@ -7,13 +7,13 @@
 
   All document state lives in `AnimationEditor` (`$lib/editor/editor-state`),
   which is immutable — every edit reassigns `editor`, which is both how Svelte
-  sees the change and how undo and drafts will later get a history for free.
-  This file is the wiring: pointer events in, one mutation out, and the two
-  dialogs a save can produce.
+  sees the change and where the undo stack gets its steps. This file is the
+  wiring: pointer events in, one mutation out, and the two dialogs a save can
+  produce.
 
   View state — playhead, selection, channel visibility — deliberately stays out
   of the editor. It is not part of the document, so it is not dirty, not saved
-  and (later) not undoable.
+  and not undoable; undo only moves it as a side effect, to show what it did.
 -->
 <script lang="ts">
   import { Redo2, Undo2 } from "@lucide/svelte";
@@ -64,14 +64,8 @@
   let nameInput: HTMLInputElement | undefined = $state();
   let descriptionInput: HTMLTextAreaElement | undefined = $state();
 
-  /**
-   * Step the history, then go and show what moved.
-   *
-   * The playhead and the selection are not on the undo stack — navigating is
-   * free — but an undo the user cannot see is an undo they cannot trust, so the
-   * step reports where it landed and the view follows it here.
-   */
-  function step(moved: AnimationEditor) {
+  /** Take an undo/redo result and go and show what it moved. */
+  function applyHistoryMove(moved: AnimationEditor) {
     if (moved === editor) return;
     const reveal = moved.reveal;
     editor = moved;
@@ -86,7 +80,7 @@
     field?.focus();
   }
 
-  function shortcut(event: KeyboardEvent) {
+  function onHistoryKeydown(event: KeyboardEvent) {
     // Deliberately intercepted even inside the name and description fields: the
     // text is part of the document, typing is already an undo step, and letting
     // the browser's own field-level undo run alongside would give one gesture
@@ -95,10 +89,10 @@
     const key = event.key.toLowerCase();
     if (key === "z") {
       event.preventDefault();
-      step(event.shiftKey ? editor.redone() : editor.undone());
+      applyHistoryMove(event.shiftKey ? editor.redone() : editor.undone());
     } else if (key === "y") {
       event.preventDefault();
-      step(editor.redone());
+      applyHistoryMove(editor.redone());
     }
   }
 
@@ -182,7 +176,7 @@
 </script>
 
 <svelte:head><title>Editing {editor.document.name}</title></svelte:head>
-<svelte:window onkeydown={shortcut} />
+<svelte:window onkeydown={onHistoryKeydown} />
 
 <main class="px-4 py-8">
   <div class="mx-auto max-w-5xl space-y-6">
@@ -209,12 +203,12 @@
         </div>
 
         <div class="flex shrink-0 items-center gap-3">
-          <!-- Buttons as well as shortcuts: touch has no Ctrl+Z, and this is
-               the only place the depth of the stack is visible at all. -->
+          <!-- Buttons as well as shortcuts: this is the only place the stack
+               is visible at all, and a pointer has no Ctrl+Z. -->
           <span class="flex items-center gap-1">
             <button
               type="button"
-              onclick={() => step(editor.undone())}
+              onclick={() => applyHistoryMove(editor.undone())}
               disabled={!editor.canUndo}
               title="Undo"
               aria-label="Undo"
@@ -224,7 +218,7 @@
             </button>
             <button
               type="button"
-              onclick={() => step(editor.redone())}
+              onclick={() => applyHistoryMove(editor.redone())}
               disabled={!editor.canRedo}
               title="Redo"
               aria-label="Redo"

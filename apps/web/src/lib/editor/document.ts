@@ -151,11 +151,14 @@ export function revealOf(from: EditorDocument, to: EditorDocument): Reveal {
     return other === undefined || !keyframesEqual(frame, other);
   });
 
-  if (at !== -1) return { kind: "keyframe", index: at, timeMs: after[at]?.timeMs ?? 0 };
-  if (after.length < before.length) {
-    // a column was deleted off the end: reveal what is now last, not a gap
-    const index = Math.max(after.length - 1, 0);
-    return { kind: "keyframe", index, timeMs: after[index]?.timeMs ?? 0 };
+  const changed = at === -1 ? undefined : after[at];
+  if (changed !== undefined) return { kind: "keyframe", index: at, timeMs: changed.timeMs };
+
+  // a column was deleted off the end: reveal what is now last, not the gap
+  const lastIndex = after.length - 1;
+  const last = after[lastIndex];
+  if (after.length < before.length && last !== undefined) {
+    return { kind: "keyframe", index: lastIndex, timeMs: last.timeMs };
   }
   if (from.name !== to.name) return { kind: "field", field: "name" };
   if (from.description !== to.description) return { kind: "field", field: "description" };
