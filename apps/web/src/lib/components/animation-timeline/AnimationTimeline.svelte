@@ -57,15 +57,18 @@
     oncommit,
   }: Props = $props();
 
-  const HEIGHT = 340;
+  // Both measured: the canvas is sized in CSS (a share of the viewport, so the
+  // 3D preview above keeps the rest), and every mapping below reads the result.
+  let width = $state(800);
+  let height = $state(340);
+
   /** Room above the plot for the column grips to sit in. */
   const PAD_TOP = 18;
   const PAD_BOTTOM = 10;
-  const PLOT_HEIGHT = HEIGHT - PAD_TOP - PAD_BOTTOM;
+  const PLOT_HEIGHT = $derived(height - PAD_TOP - PAD_BOTTOM);
   /** Dense enough that a 20 ms elastic wobble is visible at full canvas width. */
   const CURVE_SAMPLES = 240;
 
-  let width = $state(800);
   let canvas: HTMLDivElement | undefined = $state();
   let popoverOpen = $state(false);
 
@@ -328,8 +331,8 @@
   <div
     bind:this={canvas}
     bind:clientWidth={width}
-    class="relative touch-none rounded-b-md bg-gray-50 select-none dark:bg-gray-900/50"
-    style="height:{HEIGHT}px"
+    bind:clientHeight={height}
+    class="relative h-[45dvh] max-h-[340px] min-h-60 touch-none rounded-b-md bg-gray-50 select-none lg:h-[34dvh] dark:bg-gray-900/50"
   >
     <svg class="absolute inset-0 h-full w-full" aria-hidden="true">
       {#each gridAngles as angle (angle)}
@@ -364,7 +367,7 @@
           x1={x(frame.timeMs)}
           y1={PAD_TOP - 6}
           x2={x(frame.timeMs)}
-          y2={HEIGHT}
+          y2={height}
           class={selectedIndex === index
             ? "stroke-gray-500"
             : "stroke-gray-300 dark:stroke-gray-700"}
@@ -379,7 +382,7 @@
         x1={x(Math.min(playheadMs, viewMs))}
         y1="0"
         x2={x(Math.min(playheadMs, viewMs))}
-        y2={HEIGHT}
+        y2={height}
         class="stroke-red-500"
       />
     </svg>

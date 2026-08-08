@@ -278,168 +278,168 @@
 <svelte:window onkeydown={onHistoryKeydown} onpagehide={() => draftWriter.flush()} />
 <svelte:document onvisibilitychange={flushDraftIfHidden} />
 
-<main class="px-4 py-8" inert={dialogOpen}>
-  <div class="mx-auto max-w-5xl space-y-6">
-    <header class="space-y-3">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="min-w-0 flex-1 space-y-1">
-          <label class="sr-only" for="animation-name">Name</label>
-          <input
-            bind:this={nameInput}
-            id="animation-name"
-            type="text"
-            maxlength={NAME_MAX}
-            value={editor.document.name}
-            oninput={(event) => (editor = editor.setName(event.currentTarget.value))}
-            onblur={() => (editor = editor.editCommitted())}
-            placeholder="Name this animation"
-            class="w-full rounded-md border border-transparent bg-transparent text-2xl font-bold text-gray-900 hover:border-gray-300 focus:border-gray-400 focus:outline-none dark:text-white dark:hover:border-gray-700"
-          />
-          {#if editor.nameIsEmpty}
-            <p class="text-sm text-red-600 dark:text-red-400">
-              An animation needs a name before it can be saved.
-            </p>
-          {/if}
-        </div>
+<!-- An app shell above `lg` — the preview takes what header and footer leave;
+     below it the page stacks and scrolls again, per spec §3.1. -->
+<main class="flex flex-col lg:min-h-0 lg:flex-1" inert={dialogOpen}>
+  <header class="shrink-0 space-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="min-w-0 flex-1">
+        <label class="sr-only" for="animation-name">Name</label>
+        <input
+          bind:this={nameInput}
+          id="animation-name"
+          type="text"
+          maxlength={NAME_MAX}
+          value={editor.document.name}
+          oninput={(event) => (editor = editor.setName(event.currentTarget.value))}
+          onblur={() => (editor = editor.editCommitted())}
+          placeholder="Name this animation"
+          class="w-full rounded-md border border-transparent bg-transparent text-xl font-bold text-gray-900 hover:border-gray-300 focus:border-gray-400 focus:outline-none dark:text-white dark:hover:border-gray-700"
+        />
+      </div>
 
-        <div class="flex shrink-0 items-center gap-3">
-          <!-- Buttons as well as shortcuts: this is the only place the stack
-               is visible at all, and a pointer has no Ctrl+Z. -->
-          <span class="flex items-center gap-1">
-            <button
-              type="button"
-              onclick={() => applyHistoryMove(editor.undone())}
-              disabled={!editor.canUndo}
-              title="Undo"
-              aria-label="Undo"
-              class={historyButtonClasses}
-            >
-              <Undo2 class="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onclick={() => applyHistoryMove(editor.redone())}
-              disabled={!editor.canRedo}
-              title="Redo"
-              aria-label="Redo"
-              class={historyButtonClasses}
-            >
-              <Redo2 class="h-4 w-4" />
-            </button>
-          </span>
-          <span class="text-sm text-gray-500 dark:text-gray-400">
-            {#if editor.saving}
-              Saving…
-            {:else if editor.dirty}
-              Unsaved changes
-            {:else}
-              Saved
-            {/if}
-          </span>
-          <a
-            href={resolve("/animations/[id]", { id: editor.animationId })}
-            class={secondaryButtonClasses}
-          >
-            Done
-          </a>
+      <div class="flex shrink-0 items-center gap-3">
+        <!-- Buttons as well as shortcuts: this is the only place the stack
+             is visible at all, and a pointer has no Ctrl+Z. -->
+        <span class="flex items-center gap-1">
           <button
             type="button"
-            onclick={() => void save()}
-            disabled={!editor.canSave}
-            class="{primaryButtonClasses} disabled:opacity-50"
+            onclick={() => applyHistoryMove(editor.undone())}
+            disabled={!editor.canUndo}
+            title="Undo"
+            aria-label="Undo"
+            class={historyButtonClasses}
           >
-            Save
+            <Undo2 class="h-4 w-4" />
           </button>
-        </div>
-      </div>
-
-      <div class="space-y-1">
-        <label class="sr-only" for="animation-description">Description</label>
-        <textarea
-          bind:this={descriptionInput}
-          id="animation-description"
-          rows="2"
-          maxlength={DESCRIPTION_MAX}
-          value={editor.document.description}
-          oninput={(event) => (editor = editor.setDescription(event.currentTarget.value))}
-          onblur={() => (editor = editor.editCommitted())}
-          placeholder="Describe it (optional)"
-          class="w-full rounded-md border border-gray-300 bg-transparent p-2 text-sm text-gray-700 focus:outline-none dark:border-gray-700 dark:text-gray-300"
-        ></textarea>
-        <p class="text-right text-xs text-gray-400">
-          {editor.document.description.length} / {DESCRIPTION_MAX}
-        </p>
-      </div>
-
-      {#if editor.errorMessage !== null}
-        <div
-          role="alert"
-          class="flex items-center justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
-        >
-          <span>{editor.errorMessage}</span>
-          <span class="flex gap-3">
-            <button type="button" class="underline" onclick={() => void save()}>Try again</button>
-            <button
-              type="button"
-              class="underline"
-              onclick={() => (editor = editor.errorDismissed())}
-            >
-              Dismiss
-            </button>
-          </span>
-        </div>
-      {/if}
-    </header>
-
-    <div class="grid gap-6 lg:grid-cols-[320px_1fr]">
-      <!-- Fixed aspect so the viewer arriving causes no layout shift, exactly as
-           on the detail page; until then the curves hold the space. -->
-      <section
-        class="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-gray-100 dark:bg-gray-900"
-      >
-        {#if Viewer && modelUrl && !viewerFailed && editor.keyframes.length > 0}
-          <Viewer
-            keyframes={editor.keyframes}
-            {modelUrl}
-            bind:currentTimeMs={playheadMs}
-            transport={false}
-            onready={() => (viewerReady = true)}
-            onerror={() => (viewerFailed = true)}
-          />
-        {/if}
-        {#if showPlaceholder}
-          <AnimationSparkline
-            keyframes={editor.keyframes}
-            label="Motion curves for {editor.document.name}"
-            class="absolute inset-0 h-full w-full p-6 opacity-60"
-          />
-          <div
-            class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-gray-400 dark:text-gray-600"
+          <button
+            type="button"
+            onclick={() => applyHistoryMove(editor.redone())}
+            disabled={!editor.canRedo}
+            title="Redo"
+            aria-label="Redo"
+            class={historyButtonClasses}
           >
-            {viewerFailed ? "Preview unavailable" : "Loading preview…"}
-          </div>
-        {/if}
-      </section>
-
-      <section class="min-w-0">
-        <AnimationTimeline
-          keyframes={editor.keyframes}
-          {limits}
-          {labels}
-          bind:playheadMs
-          bind:selectedIndex
-          nearCap={editor.nearKeyframeCap}
-          atCap={editor.atKeyframeCap}
-          onangle={(index, channel, angle) => (editor = editor.setAngle(index, channel, angle))}
-          ontime={(index, timeMs) => (editor = editor.setTime(index, timeMs))}
-          onease={(index, patch) => (editor = editor.setEase(index, patch))}
-          onremove={removeKeyframe}
-          onadd={addKeyframe}
-          oncommit={() => (editor = editor.editCommitted())}
-        />
-      </section>
+            <Redo2 class="h-4 w-4" />
+          </button>
+        </span>
+        <span class="text-sm text-gray-500 dark:text-gray-400">
+          {#if editor.saving}
+            Saving…
+          {:else if editor.dirty}
+            Unsaved changes
+          {:else}
+            Saved
+          {/if}
+        </span>
+        <a
+          href={resolve("/animations/[id]", { id: editor.animationId })}
+          class={secondaryButtonClasses}
+        >
+          Done
+        </a>
+        <button
+          type="button"
+          onclick={() => void save()}
+          disabled={!editor.canSave}
+          class="{primaryButtonClasses} disabled:opacity-50"
+        >
+          Save
+        </button>
+      </div>
     </div>
-  </div>
+
+    {#if editor.nameIsEmpty}
+      <p class="text-sm text-red-600 dark:text-red-400">
+        An animation needs a name before it can be saved.
+      </p>
+    {/if}
+
+    <div class="flex items-start gap-3">
+      <label class="sr-only" for="animation-description">Description</label>
+      <textarea
+        bind:this={descriptionInput}
+        id="animation-description"
+        rows="1"
+        maxlength={DESCRIPTION_MAX}
+        value={editor.document.description}
+        oninput={(event) => (editor = editor.setDescription(event.currentTarget.value))}
+        onblur={() => (editor = editor.editCommitted())}
+        placeholder="Describe it (optional)"
+        class="min-w-0 flex-1 rounded-md border border-gray-300 bg-transparent p-2 text-sm text-gray-700 focus:outline-none dark:border-gray-700 dark:text-gray-300"
+      ></textarea>
+      <p class="shrink-0 pt-2 text-xs text-gray-400">
+        {editor.document.description.length} / {DESCRIPTION_MAX}
+      </p>
+    </div>
+
+    {#if editor.errorMessage !== null}
+      <div
+        role="alert"
+        class="flex items-center justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+      >
+        <span>{editor.errorMessage}</span>
+        <span class="flex gap-3">
+          <button type="button" class="underline" onclick={() => void save()}>Try again</button>
+          <button
+            type="button"
+            class="underline"
+            onclick={() => (editor = editor.errorDismissed())}
+          >
+            Dismiss
+          </button>
+        </span>
+      </div>
+    {/if}
+  </header>
+
+  <!-- Definite height either way — fixed aspect while the page stacks, the
+       leftover column once it doesn't — so the viewer arriving causes no layout
+       shift; until then the curves hold the space. -->
+  <section
+    class="relative aspect-[4/3] overflow-hidden bg-gray-100 lg:aspect-auto lg:min-h-0 lg:flex-1 dark:bg-gray-900"
+  >
+    {#if Viewer && modelUrl && !viewerFailed && editor.keyframes.length > 0}
+      <Viewer
+        keyframes={editor.keyframes}
+        {modelUrl}
+        bind:currentTimeMs={playheadMs}
+        transport={false}
+        onready={() => (viewerReady = true)}
+        onerror={() => (viewerFailed = true)}
+      />
+    {/if}
+    {#if showPlaceholder}
+      <AnimationSparkline
+        keyframes={editor.keyframes}
+        label="Motion curves for {editor.document.name}"
+        class="absolute inset-0 h-full w-full p-6 opacity-60"
+      />
+      <div
+        class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-gray-400 dark:text-gray-600"
+      >
+        {viewerFailed ? "Preview unavailable" : "Loading preview…"}
+      </div>
+    {/if}
+  </section>
+
+  <footer class="min-w-0 shrink-0 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+    <AnimationTimeline
+      keyframes={editor.keyframes}
+      {limits}
+      {labels}
+      bind:playheadMs
+      bind:selectedIndex
+      nearCap={editor.nearKeyframeCap}
+      atCap={editor.atKeyframeCap}
+      onangle={(index, channel, angle) => (editor = editor.setAngle(index, channel, angle))}
+      ontime={(index, timeMs) => (editor = editor.setTime(index, timeMs))}
+      onease={(index, patch) => (editor = editor.setEase(index, patch))}
+      onremove={removeKeyframe}
+      onadd={addKeyframe}
+      oncommit={() => (editor = editor.editCommitted())}
+    />
+  </footer>
 </main>
 
 {#if draftOffer !== null}
