@@ -11,7 +11,18 @@
  * call is wrapped — a private window costs the preference, never a render.
  */
 
-/** Roughly the `lg:h-[34dvh]` the graph used to take on a laptop. */
+/**
+ * When the editor is an app shell rather than a stacked, scrolling page — the
+ * only layout where a split exists to divide.
+ *
+ * Must stay identical to the `editor-shell` variant in `app.css`, which is what
+ * applies the height this module computes. They are the same condition written
+ * in the two languages that need it.
+ */
+export const EDITOR_SHELL_MEDIA_QUERY =
+  "(min-height: 32rem) and ((min-width: 64rem) or ((min-width: 48rem) and (pointer: fine)))";
+
+/** Roughly the `34dvh` the graph used to take on a laptop. */
 export const DEFAULT_TIMELINE_HEIGHT = 320;
 
 /** Below this the curves and their column grips stop being aimable. */

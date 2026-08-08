@@ -41,9 +41,10 @@
     nearCap: boolean;
     atCap: boolean;
     /**
-     * Graph height in px, applied only where the editor is an app shell (`lg`
-     * and up) and its divider has a fixed height to split. `null` leaves the
-     * responsive default, which is what every other caller wants.
+     * Graph height in px, applied only where the editor is an app shell (the
+     * `editor-shell` variant) and its divider has a fixed height to split.
+     * `null` leaves the responsive default, which is what every other caller
+     * wants.
      */
     graphHeight?: number | null;
     onangle: (index: number, channel: number, angle: number) => void;
@@ -512,7 +513,7 @@
   <div class="relative">
     <!-- A no-scroll zone: `touch-none` means every touch that starts here is an
        editor gesture, and the page still scrolls from the chrome around it.
-       45dvh with a 240 px floor is the small-screen geometry; above `lg` the
+       45dvh with a 240 px floor is the stacked geometry; in the shell the
        divider's height wins. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
@@ -523,7 +524,7 @@
       class="relative h-[45dvh] min-h-60 touch-none rounded-b-md bg-gray-50 select-none dark:bg-gray-900/50 {graphHeight ===
       null
         ? 'lg:h-[34dvh] lg:max-h-[340px]'
-        : 'lg:h-[var(--graph-height)] lg:min-h-0'}"
+        : 'editor-shell:h-[var(--graph-height)] editor-shell:min-h-0'}"
       style={graphHeight === null ? undefined : `--graph-height:${graphHeight}px`}
     >
       <svg class="absolute inset-0 h-full w-full" aria-hidden="true">
