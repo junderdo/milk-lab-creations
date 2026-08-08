@@ -17,12 +17,14 @@
 -->
 <script lang="ts">
   import { Redo2, Undo2 } from "@lucide/svelte";
-  import { onMount, untrack } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
+  import { beforeNavigate, goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { channelLabelsFor, modelUrlFor } from "$lib/animation/robots";
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import AnimationTimeline from "$lib/components/animation-timeline/AnimationTimeline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
+  import EditorDialog from "./EditorDialog.svelte";
   import {
     DESCRIPTION_MAX,
     insertionIndexFor,
@@ -30,6 +32,13 @@
     updateInputFor,
     type RobotLimits,
   } from "$lib/editor/document";
+  import {
+    DraftWriter,
+    draftKeyFor,
+    localDraftStorage,
+    takeDraft,
+    type DraftOffer,
+  } from "$lib/editor/draft";
   import { AnimationEditor, type LoadedAnimation } from "$lib/editor/editor-state";
   import { saveFailureFrom } from "$lib/editor/save-error";
   import { trpc } from "$lib/trpc";
@@ -64,6 +73,78 @@
   let nameInput: HTMLInputElement | undefined = $state();
   let descriptionInput: HTMLTextAreaElement | undefined = $state();
 
+  const draftKey = draftKeyFor(opened.id);
+  const draftStorage = localDraftStorage();
+  const draftWriter = new DraftWriter({ storage: draftStorage, key: draftKey });
+
+  // Answered before the document is allowed to move: writing a draft over the
+  // one being offered would destroy the very work the dialog is offering back.
+  let draftOffer = $state<DraftOffer>({ kind: "none" });
+  let draftChecked = $state(false);
+
+  onMount(() => {
+    draftOffer = takeDraft(draftStorage, draftKey, {
+      document: editor.document,
+      updatedAt: editor.baseUpdatedAt,
+    });
+    draftChecked = true;
+  });
+
+  $effect(() => {
+    const { document, dirty, baseUpdatedAt } = editor;
+    if (!draftChecked || draftOffer.kind === "offer") return;
+    // clean means there is nothing a draft could recover — including after a
+    // save, which is one of the two moments a draft is meant to disappear
+    if (dirty) draftWriter.documentChanged(document, baseUpdatedAt);
+    else draftWriter.discard();
+  });
+
+  // An in-app navigation away never hides the tab, so the debounce would
+  // otherwise swallow the last second of work.
+  onDestroy(() => draftWriter.flush());
+
+  function flushDraftIfHidden() {
+    if (globalThis.document.visibilityState === "hidden") draftWriter.flush();
+  }
+
+  function restoreDraft() {
+    if (draftOffer.kind !== "offer") return;
+    editor = editor.draftRestored(draftOffer.draft.document);
+    draftOffer = { kind: "none" };
+  }
+
+  function discardDraft() {
+    draftWriter.discard();
+    draftOffer = { kind: "none" };
+  }
+
+  let leaveTo = $state<URL | null>(null);
+  let leaving = false;
+
+  beforeNavigate((navigation) => {
+    if (leaving || !editor.dirty) return;
+    if (navigation.willUnload) {
+      // cancelling an unload is what raises the browser's own prompt; a dialog
+      // of ours would be rendered into a page that may already be going
+      navigation.cancel();
+      return;
+    }
+    const url = navigation.to?.url;
+    if (url === undefined) return;
+    navigation.cancel();
+    leaveTo = url;
+  });
+
+  function leaveAnyway() {
+    const url = leaveTo;
+    leaveTo = null;
+    if (url === null) return;
+    leaving = true;
+    // already a resolved URL — it is the destination the guard just cancelled
+    // eslint-disable-next-line svelte/no-navigation-without-resolve
+    void goto(url);
+  }
+
   /** Take an undo/redo result and go and show what it moved. */
   function applyHistoryMove(moved: AnimationEditor) {
     if (moved === editor) return;
@@ -85,6 +166,7 @@
     // text is part of the document, typing is already an undo step, and letting
     // the browser's own field-level undo run alongside would give one gesture
     // two conflicting histories.
+    if (dialogOpen) return; // a shortcut is not blocked by `inert`
     if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
     const key = event.key.toLowerCase();
     if (key === "z") {
@@ -116,6 +198,19 @@
   });
 
   const showPlaceholder = $derived(!viewerReady || viewerFailed);
+
+  // `inert` rather than an overlay alone: every one of these dialogs is a
+  // decision about the document, and a Tab key that reaches the timeline behind
+  // it would let the document move while the question is still open.
+  const dialogOpen = $derived(
+    draftOffer.kind === "offer" || editor.conflict !== null || leaveTo !== null,
+  );
+
+  const primaryButtonClasses =
+    "rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200";
+
+  const secondaryButtonClasses =
+    "rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800";
 
   const historyButtonClasses =
     "rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800";
@@ -176,9 +271,10 @@
 </script>
 
 <svelte:head><title>Editing {editor.document.name}</title></svelte:head>
-<svelte:window onkeydown={onHistoryKeydown} />
+<svelte:window onkeydown={onHistoryKeydown} onpagehide={() => draftWriter.flush()} />
+<svelte:document onvisibilitychange={flushDraftIfHidden} />
 
-<main class="px-4 py-8">
+<main class="px-4 py-8" inert={dialogOpen}>
   <div class="mx-auto max-w-5xl space-y-6">
     <header class="space-y-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
@@ -238,7 +334,7 @@
           </span>
           <a
             href={resolve("/animations/[id]", { id: editor.animationId })}
-            class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            class={secondaryButtonClasses}
           >
             Done
           </a>
@@ -246,7 +342,7 @@
             type="button"
             onclick={() => void save()}
             disabled={!editor.canSave}
-            class="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+            class="{primaryButtonClasses} disabled:opacity-50"
           >
             Save
           </button>
@@ -342,43 +438,65 @@
   </div>
 </main>
 
+{#if draftOffer.kind === "offer"}
+  <!--
+    Before editing begins, and only when the draft says something the server
+    copy does not. Restoring a stale draft is still allowed: what it collides
+    with is settled at save time by the conflict dialog below, not here.
+  -->
+  <EditorDialog title="You have unsaved changes on this device">
+    <p class="text-sm text-gray-600 dark:text-gray-400">
+      Left over from {draftOffer.draft.savedAt.toLocaleString()}.
+      {#if draftOffer.stale}
+        This animation has been changed elsewhere since then, so restoring may bring back work that
+        is out of date — you will be asked again when you save.
+      {/if}
+    </p>
+    <div class="flex flex-wrap justify-end gap-3">
+      <button type="button" onclick={discardDraft} class={secondaryButtonClasses}>
+        Discard draft
+      </button>
+      <button type="button" onclick={restoreDraft} class={primaryButtonClasses}>
+        Restore draft
+      </button>
+    </div>
+  </EditorDialog>
+{/if}
+
 {#if editor.conflict !== null}
   <!--
     Two choices, no merge. The record the server rejected us with is already in
     hand, so "load newest" needs no refetch — and the realistic blast radius is
     one person in two tabs.
   -->
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="conflict-title"
-  >
-    <div class="w-full max-w-md space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-gray-950">
-      <h2 id="conflict-title" class="text-lg font-bold text-gray-900 dark:text-white">
-        This animation was changed elsewhere
-      </h2>
-      <p class="text-sm text-gray-600 dark:text-gray-400">
-        Probably another tab or device. Saving now would overwrite
-        <b class="font-medium">{editor.conflict.name}</b>, saved
-        {editor.conflict.updatedAt.toLocaleString()}.
-      </p>
-      <div class="flex flex-wrap justify-end gap-3">
-        <button
-          type="button"
-          onclick={discardMine}
-          class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-        >
-          Discard mine, load newest
-        </button>
-        <button
-          type="button"
-          onclick={() => void overwrite()}
-          class="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
-        >
-          Overwrite
-        </button>
-      </div>
+  <EditorDialog title="This animation was changed elsewhere">
+    <p class="text-sm text-gray-600 dark:text-gray-400">
+      Probably another tab or device. Saving now would overwrite
+      <b class="font-medium">{editor.conflict.name}</b>, saved
+      {editor.conflict.updatedAt.toLocaleString()}.
+    </p>
+    <div class="flex flex-wrap justify-end gap-3">
+      <button type="button" onclick={discardMine} class={secondaryButtonClasses}>
+        Discard mine, load newest
+      </button>
+      <button type="button" onclick={() => void overwrite()} class={primaryButtonClasses}>
+        Overwrite
+      </button>
     </div>
-  </div>
+  </EditorDialog>
+{/if}
+
+{#if leaveTo !== null}
+  <EditorDialog title="You have unsaved changes">
+    <p class="text-sm text-gray-600 dark:text-gray-400">
+      They are kept as a draft on this device, so you can pick them up here again — but they have
+      not been saved.
+    </p>
+    <div class="flex flex-wrap justify-end gap-3">
+      <button type="button" onclick={leaveAnyway} class={secondaryButtonClasses}>Leave</button>
+      <button type="button" onclick={() => (leaveTo = null)} class={primaryButtonClasses}>
+        Stay
+      </button>
+    </div>
+  </EditorDialog>
 {/if}
