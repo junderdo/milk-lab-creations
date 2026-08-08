@@ -16,6 +16,7 @@
     animation={data.animation}
     robot={data.robot}
     limits={data.limits}
+    provenance={data.animation}
     visibility={visibilityOf(data.animation.visibility)}
   />
 {/key}
