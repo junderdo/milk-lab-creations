@@ -48,7 +48,7 @@
 
   const coarsePointer =
     typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
-  interactivity({ clickDistanceThreshold: coarsePointer ? 16 : 8 });
+  const picking = interactivity({ clickDistanceThreshold: coarsePointer ? 16 : 8 });
 
   // CHANNEL_STYLES hues (sky/violet/amber/emerald), as hex for three.js
   // materials — 600s on the light canvas, 400s on the dark one.
@@ -187,6 +187,18 @@
   function onPointerMissed() {
     selected = null;
   }
+
+  // Registered imperatively, not via a second <T is={scene}>: the scene's <T>
+  // stays owned by RobotScene, so no branch swap can ever detach the robot.
+  $effect(() => {
+    picking.addInteractiveObject(scene, {
+      onpointermove: onSceneMove,
+      onpointerleave: onSceneLeave,
+      onclick: onSceneClick,
+      onpointermissed: onPointerMissed,
+    });
+    return () => picking.removeInteractiveObject(scene);
+  });
 
   $effect(() => {
     const onKeydown = (event: KeyboardEvent) => {
@@ -431,15 +443,6 @@
   const readoutFor = (ring: Ring) =>
     Math.round(drag?.ring === ring ? drag.value : (angles[ring.pivot.channel] ?? 0));
 </script>
-
-<T
-  is={scene}
-  dispose={false}
-  onpointermove={onSceneMove}
-  onpointerleave={onSceneLeave}
-  onclick={onSceneClick}
-  onpointermissed={onPointerMissed}
-/>
 
 {#each rings as ring (ring.pivot.channel)}
   {@const hue = hueOf(ring.pivot.channel)}

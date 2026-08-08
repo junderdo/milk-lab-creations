@@ -291,20 +291,19 @@
 />
 
 {#if $gltf}
+  <T is={$gltf.scene} />
+  <!-- PROTOTYPE: mounted alongside the scene, never in its place — trading
+       <T is={scene}> ownership across branches detaches the robot, because the
+       outgoing branch's teardown runs after the incoming branch mounts. -->
   {#if gizmoVariant !== null && pivots.length > 0}
-    <!-- PROTOTYPE: the gizmo renders the scene root itself to own its pointer handlers -->
-    {#key gizmoVariant}
-      <RingGizmoPrototype
-        scene={$gltf.scene}
-        {pivots}
-        maxAngle={gizmoMaxAngle}
-        variant={gizmoVariant}
-        angles={lastAngles}
-        onoverride={(channel, deg) => gizmoOverrides.set(channel, deg)}
-        ondraglock={(locked) => (gizmoDragging = locked)}
-      />
-    {/key}
-  {:else}
-    <T is={$gltf.scene} />
+    <RingGizmoPrototype
+      scene={$gltf.scene}
+      {pivots}
+      maxAngle={gizmoMaxAngle}
+      variant={gizmoVariant}
+      angles={lastAngles}
+      onoverride={(channel, deg) => gizmoOverrides.set(channel, deg)}
+      ondraglock={(locked) => (gizmoDragging = locked)}
+    />
   {/if}
 {/if}
