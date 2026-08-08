@@ -14,6 +14,7 @@
   import * as THREE from "three";
   import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
   import { durationMs, sample, type Keyframe } from "$lib/animation/interpolator";
+  import RingGizmoPrototype from "./RingGizmoPrototype.svelte";
 
   interface Props {
     keyframes: Keyframe[];
@@ -26,6 +27,10 @@
     neutral: boolean;
     /** Orbit + zoom, clamped. Off for the editor's fixed camera. */
     interactive: boolean;
+    /** PROTOTYPE (branch prototype/ring-gizmos): ring-gizmo variant to mount. */
+    gizmoVariant?: "A" | "B" | "C" | null;
+    /** PROTOTYPE: servo range for the ring arcs. */
+    gizmoMaxAngle?: number;
     onpose?: (angles: number[]) => void;
     /** Fired once the rig has been posed for the first time. */
     onready?: () => void;
@@ -40,6 +45,8 @@
     loop,
     neutral,
     interactive,
+    gizmoVariant = null,
+    gizmoMaxAngle = 180,
     onpose,
     onready,
     onerror,
@@ -188,6 +195,13 @@
     shadow.normalBias = radius * 0.06;
   });
 
+  // PROTOTYPE state: drag overrides win over the sampled pose and persist until
+  // reload, so a dragged ear holds its pose; the real feature writes keyframes.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- read per frame, never rendered
+  const gizmoOverrides = new Map<number, number>();
+  let gizmoDragging = $state(false);
+  let lastAngles = $state.raw<number[]>([]);
+
   /** Rest pose: every pivot at its own neutral angle, i.e. no rotation at all. */
   function poseNeutral() {
     for (const pivot of pivots) pivot.node.quaternion.identity();
@@ -219,7 +233,9 @@
         }
       }
       const angles = sample(keyframes, currentTimeMs);
+      if (gizmoVariant) for (const [channel, deg] of gizmoOverrides) angles[channel] = deg;
       poseFrom(angles);
+      if (gizmoVariant) lastAngles = angles;
       onpose?.(angles);
     }
 
@@ -249,6 +265,7 @@
     <!-- clamped so the model can't be orbited under the floor or lost in space -->
     <OrbitControls
       {target}
+      enabled={!gizmoDragging}
       enableDamping
       enablePan={false}
       minDistance={0.15}
@@ -274,5 +291,20 @@
 />
 
 {#if $gltf}
-  <T is={$gltf.scene} />
+  {#if gizmoVariant !== null && pivots.length > 0}
+    <!-- PROTOTYPE: the gizmo renders the scene root itself to own its pointer handlers -->
+    {#key gizmoVariant}
+      <RingGizmoPrototype
+        scene={$gltf.scene}
+        {pivots}
+        maxAngle={gizmoMaxAngle}
+        variant={gizmoVariant}
+        angles={lastAngles}
+        onoverride={(channel, deg) => gizmoOverrides.set(channel, deg)}
+        ondraglock={(locked) => (gizmoDragging = locked)}
+      />
+    {/key}
+  {:else}
+    <T is={$gltf.scene} />
+  {/if}
 {/if}

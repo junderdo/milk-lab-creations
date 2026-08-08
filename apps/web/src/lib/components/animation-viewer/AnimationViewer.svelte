@@ -24,6 +24,10 @@
     transport?: boolean;
     /** Orbit + zoom. */
     interactive?: boolean;
+    /** PROTOTYPE (branch prototype/ring-gizmos): ring-gizmo variant to mount. */
+    gizmoVariant?: "A" | "B" | "C" | null;
+    /** PROTOTYPE: servo range for the ring arcs. */
+    gizmoMaxAngle?: number;
     onpose?: (angles: number[]) => void;
     /** Fired once the rig has been posed for the first time. */
     onready?: () => void;
@@ -37,6 +41,8 @@
     currentTimeMs = $bindable(0),
     transport = true,
     interactive = true,
+    gizmoVariant = null,
+    gizmoMaxAngle = 180,
     onpose,
     onready,
     onerror,
@@ -72,7 +78,8 @@
 </script>
 
 <div class="flex h-full w-full flex-col">
-  <div class="min-h-0 flex-1">
+  <!-- touch-none while the gizmo prototype is live: ring drags must not scroll -->
+  <div class="min-h-0 flex-1 {gizmoVariant !== null ? 'touch-none' : ''}">
     <Canvas renderMode="manual">
       {#key modelUrl}
         <RobotScene
@@ -83,6 +90,8 @@
           loop={transport}
           {neutral}
           {interactive}
+          {gizmoVariant}
+          {gizmoMaxAngle}
           {onpose}
           {onready}
           {onerror}

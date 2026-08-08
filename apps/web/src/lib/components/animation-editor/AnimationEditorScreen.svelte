@@ -25,6 +25,8 @@
   import { onDestroy, onMount, untrack } from "svelte";
   import { beforeNavigate, goto, replaceState } from "$app/navigation";
   import { resolve } from "$app/paths";
+  import { page } from "$app/state";
+  import PrototypeSwitcher from "$lib/components/prototype/PrototypeSwitcher.svelte";
   import { channelLabelsFor, modelUrlFor } from "$lib/animation/robots";
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import AnimationTimeline from "$lib/components/animation-timeline/AnimationTimeline.svelte";
@@ -105,6 +107,19 @@
       ? AnimationEditor.forNewAnimation(newDocument(openedLimits), openedLimits)
       : AnimationEditor.open(opened, openedLimits),
   );
+
+  // PROTOTYPE (branch prototype/ring-gizmos): hover/ring treatments in the 3D
+  // view, switchable via ?variant=. Dev-only; defaults to A on this route.
+  const GIZMO_VARIANTS = [
+    { key: "A", name: "Emissive tint · thin rings · drag readout" },
+    { key: "B", name: "Outline shell · fat occluded rings · no readout" },
+    { key: "C", name: "Colour lerp · sector fans · always-on HUD" },
+  ];
+  const gizmoVariant = $derived.by(() => {
+    if (!import.meta.env.DEV) return null;
+    const raw = page.url.searchParams.get("variant") ?? "A";
+    return raw === "A" || raw === "B" || raw === "C" ? raw : "A";
+  });
 
   let playheadMs = $state(0);
   let selectedIndex = $state<number | null>(null);
@@ -687,6 +702,8 @@
         {modelUrl}
         bind:currentTimeMs={playheadMs}
         transport={false}
+        {gizmoVariant}
+        gizmoMaxAngle={openedLimits.maxAngle}
         onready={() => (viewerReady = true)}
         onerror={() => (viewerFailed = true)}
       />
@@ -761,6 +778,10 @@
     />
   </footer>
 </main>
+
+{#if gizmoVariant !== null}
+  <PrototypeSwitcher variants={GIZMO_VARIANTS} />
+{/if}
 
 {#if draftOffer !== null}
   <!--
