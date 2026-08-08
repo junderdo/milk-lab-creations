@@ -294,7 +294,7 @@
           oninput={(event) => (editor = editor.setName(event.currentTarget.value))}
           onblur={() => (editor = editor.editCommitted())}
           placeholder="Name this animation"
-          class="w-full rounded-md border border-transparent bg-transparent text-xl font-bold text-gray-900 hover:border-gray-300 focus:border-gray-400 focus:outline-none dark:text-white dark:hover:border-gray-700"
+          class="w-full rounded-md border border-transparent bg-transparent text-xl font-bold text-gray-900 hover:border-gray-300 focus:border-gray-400 focus:outline-none dark:text-white dark:hover:border-gray-700 dark:focus:border-gray-600"
         />
       </div>
 
@@ -368,7 +368,7 @@
         placeholder="Describe it (optional)"
         class="min-w-0 flex-1 rounded-md border border-gray-300 bg-transparent p-2 text-sm text-gray-700 focus:outline-none dark:border-gray-700 dark:text-gray-300"
       ></textarea>
-      <p class="shrink-0 pt-2 text-xs text-gray-400">
+      <p class="shrink-0 pt-2 text-xs text-gray-400 dark:text-gray-500">
         {editor.document.description.length} / {DESCRIPTION_MAX}
       </p>
     </div>
@@ -416,7 +416,7 @@
         class="absolute inset-0 h-full w-full p-6 opacity-60"
       />
       <div
-        class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-gray-400 dark:text-gray-600"
+        class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-gray-400 dark:text-gray-500"
       >
         {viewerFailed ? "Preview unavailable" : "Loading preview…"}
       </div>

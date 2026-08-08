@@ -306,6 +306,7 @@
         class:text-amber-600={nearCap}
         class:dark:text-amber-400={nearCap}
         class:text-gray-500={!nearCap}
+        class:dark:text-gray-400={!nearCap}
         title={atCap ? capTooltip : undefined}
       >
         {keyframes.length} / {limits.maxKeyframes} keyframes
@@ -322,7 +323,7 @@
   >
     {#each ticks as tick (tick)}
       <span
-        class="absolute top-0.5 border-l border-gray-300 pl-1 text-[10px] text-gray-500 dark:border-gray-700"
+        class="absolute top-0.5 border-l border-gray-300 pl-1 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400"
         style="left:{x(tick)}px">{(tick / 1000).toFixed(tickMs < 1000 ? 2 : 1)}s</span
       >
     {/each}
@@ -344,7 +345,7 @@
           class="stroke-gray-200 dark:stroke-gray-800"
           stroke-dasharray={angle * 2 === limits.maxAngle ? "0" : "2 5"}
         />
-        <text x="4" y={y(angle) - 3} class="fill-gray-400 text-[9px]">{angle}°</text>
+        <text x="4" y={y(angle) - 3} class="fill-gray-400 text-[9px] dark:fill-gray-500">{angle}°</text>
       {/each}
 
       <g transform="translate(0,{PAD_TOP})">
@@ -369,7 +370,7 @@
           x2={x(frame.timeMs)}
           y2={height}
           class={selectedIndex === index
-            ? "stroke-gray-500"
+            ? "stroke-gray-500 dark:stroke-gray-400"
             : "stroke-gray-300 dark:stroke-gray-700"}
           stroke-dasharray={selectedIndex === index ? "0" : "3 3"}
         />

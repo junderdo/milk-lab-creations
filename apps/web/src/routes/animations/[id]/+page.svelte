@@ -132,7 +132,7 @@
             class="absolute inset-0 h-full w-full p-6 opacity-60"
           />
           <div
-            class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-gray-400 dark:text-gray-600"
+            class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-gray-400 dark:text-gray-500"
           >
             {placeholderMessage}
           </div>
