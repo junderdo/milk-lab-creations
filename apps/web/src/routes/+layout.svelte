@@ -2,6 +2,7 @@
   import "../app.css";
   import { resolve } from "$app/paths";
   import favicon from "$lib/assets/favicon.svg";
+  import logo from "$lib/assets/milk-lab-logo.svg";
   import { setAccessToken } from "$lib/trpc";
   import ThemeToggle from "$lib/components/theme-toggle/ThemeToggle.svelte";
 
@@ -31,8 +32,11 @@
   <header class="shrink-0 border-b border-gray-200 dark:border-gray-800">
     <nav class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
       <div class="flex items-center gap-6">
-        <a href={resolve("/")} class="font-bold text-gray-900 dark:text-white">Milk Lab Creations</a
-        >
+        <a href={resolve("/")}>
+          <!-- The logo is black line art on transparent, so dark mode inverts it
+               rather than shipping a second file. -->
+          <img src={logo} alt="Milk Lab Creations" class="h-12 w-auto dark:invert" />
+        </a>
         <a href={resolve("/")} class="text-sm text-gray-600 hover:underline dark:text-gray-400"
           >Gallery</a
         >
