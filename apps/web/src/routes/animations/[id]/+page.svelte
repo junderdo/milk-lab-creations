@@ -7,6 +7,7 @@
   import { trpc } from "$lib/trpc";
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
+  import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
 
   let { data } = $props();
   const animation = $derived(data.animation);
@@ -43,14 +44,14 @@
   let remixing = $state(false);
   let remixError: string | null = $state(null);
 
-  // Eager fork: the copy happens server-side on click and we land on the new
-  // animation. ("Remix flows into the editor" retargets this to the editor.)
+  // Eager fork: the copy happens server-side on click and we land in the editor
+  // on it — remixing is a way of starting to create, not a way of collecting.
   async function remix() {
     remixing = true;
     remixError = null;
     try {
       const fork = await trpc().animations.remix.mutate({ id: animation.id });
-      await goto(resolve("/animations/[id]", { id: fork.id }));
+      await goto(resolve("/animations/[id]/edit", { id: fork.id }));
     } catch {
       remixError = "Could not remix this animation. Please try again.";
       remixing = false;
@@ -87,20 +88,7 @@
         by {animation.owner?.displayName ?? "unknown"} · {animation.robot?.name} ·
         {(animation.durationMs / 1000).toFixed(1)}s · {animation.keyframeCount} keyframes
       </p>
-      {#if animation.remixedFromId}
-        <p class="text-sm text-gray-600 dark:text-gray-400">
-          Remixed from
-          {#if animation.remixedFrom}
-            <a
-              href={resolve("/animations/[id]", { id: animation.remixedFrom.id })}
-              class="underline">{animation.remixedFrom.name}</a
-            >
-          {:else}
-            <!-- deleted or since made private — deliberately indistinguishable -->
-            <span class="italic">an original that is no longer available</span>
-          {/if}
-        </p>
-      {/if}
+      <RemixAttribution provenance={animation} />
       {#if animation.description}
         <p class="text-sm text-gray-700 dark:text-gray-300">{animation.description}</p>
       {/if}

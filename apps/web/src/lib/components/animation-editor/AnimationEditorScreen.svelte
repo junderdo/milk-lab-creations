@@ -25,7 +25,9 @@
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import AnimationTimeline from "$lib/components/animation-timeline/AnimationTimeline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
+  import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
   import EditorDialog from "./EditorDialog.svelte";
+  import type { RemixProvenance } from "$lib/animation/remix";
   import {
     createInputFor,
     DESCRIPTION_MAX,
@@ -62,9 +64,16 @@
     animation: LoadedAnimation | null;
     robot: EditorRobot;
     limits: RobotLimits;
+    /** Where this animation was forked from; an original has neither field. */
+    provenance?: RemixProvenance;
   }
 
-  let { animation, robot, limits }: Props = $props();
+  let {
+    animation,
+    robot,
+    limits,
+    provenance = { remixedFromId: null, remixedFrom: null },
+  }: Props = $props();
 
   // Read once, deliberately: the route keys on the animation id, so a different
   // animation is a different mount. `untrack` says that rather than leaving a
@@ -494,6 +503,10 @@
         </button>
       </div>
     </div>
+
+    <!-- Provenance follows the fork into the editor: renaming a remix is the
+         first thing most people do, and this is what survives that. -->
+    <RemixAttribution {provenance} />
 
     <!-- Said from the moment the editor opens nameless, so a disabled Save is
          never unexplained — but only red once it is actually holding back work
