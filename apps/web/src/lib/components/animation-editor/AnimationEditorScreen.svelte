@@ -45,6 +45,14 @@
   } from "$lib/editor/draft";
   import { AnimationEditor, type LoadedAnimation } from "$lib/editor/editor-state";
   import { leaveDecision, type LeaveTarget } from "$lib/editor/leave-guard";
+  import {
+    clampTimelineHeight,
+    DEFAULT_TIMELINE_HEIGHT,
+    localTimelineHeightStorage,
+    MIN_TIMELINE_HEIGHT,
+    readTimelineHeight,
+    writeTimelineHeight,
+  } from "$lib/editor/timeline-height";
   import { humanizedSince } from "$lib/format/relative-time";
   import { saveFailureFrom } from "$lib/editor/save-error";
   import { trpc } from "$lib/trpc";
@@ -211,6 +219,106 @@
 
   const showPlaceholder = $derived(!viewerReady || viewerFailed);
 
+  // --- The divider between preview and timeline -------------------------------
+  //
+  // Only the graph's height is state; the preview is `flex-1` and takes the
+  // rest, so the two cannot drift apart. Everything about *what* the number is
+  // allowed to be lives in `timeline-height`, leaving this the pointer wiring.
+
+  const heightStorage = localTimelineHeightStorage();
+  let timelineHeight = $state(DEFAULT_TIMELINE_HEIGHT);
+  let resizing = $state(false);
+
+  // Fixed at pointerdown: the two panes only trade with each other, so their
+  // combined height is the one thing a drag cannot change.
+  let dragBudget = 0;
+  let dragStartY = 0;
+  let dragStartHeight = 0;
+
+  // Measured rather than derived from the preview's own height, which is the
+  // one number that stops being informative exactly when it matters: a graph
+  // too tall for the shell crushes the preview to 0, and 0 says nothing about
+  // how much room to give back. Everything below is independent of the value
+  // being corrected, so the ceiling is right on the first pass.
+  let shellHeight = $state(0);
+  let headerHeight = $state(0);
+  let dividerHeight = $state(0);
+  let footerHeight = $state(0);
+
+  /** Footer minus the graph it wraps: ruler, channel chips, padding. */
+  const footerChrome = $derived(footerHeight - timelineHeight);
+
+  /** Room the preview and the graph share — what a clamp may divide up. */
+  const paneBudget = $derived(shellHeight - headerHeight - dividerHeight - footerChrome);
+  const maxTimelineHeight = $derived(clampTimelineHeight(paneBudget, paneBudget));
+
+  // The `lg` breakpoint as a query rather than a hard-coded 1024: below it the
+  // page stacks and scrolls, the height is not applied at all, and re-clamping
+  // it against an aspect-ratio'd preview would corrupt a good stored value.
+  let shellLayout = $state(false);
+
+  onMount(() => {
+    // Unclamped: the panes have not been measured yet, and clamping against a
+    // zero budget would throw away a perfectly good stored height.
+    timelineHeight = readTimelineHeight(heightStorage);
+    const wide = globalThis.matchMedia("(min-width: 64rem)");
+    shellLayout = wide.matches;
+    const onChange = (event: MediaQueryListEvent) => (shellLayout = event.matches);
+    wide.addEventListener("change", onChange);
+    return () => wide.removeEventListener("change", onChange);
+  });
+
+  // Covers both the restore above and a window shortened later: whatever the
+  // reason the preview no longer has its minimum, it takes the room back.
+  // `shellHeight` is 0 only before the first measurement. Deliberately not
+  // persisted — a window that is briefly too short should not overwrite the
+  // height the user actually chose.
+  $effect(() => {
+    if (!shellLayout || resizing || shellHeight === 0) return;
+    if (timelineHeight > maxTimelineHeight) timelineHeight = maxTimelineHeight;
+  });
+
+  function startResize(event: PointerEvent & { currentTarget: HTMLElement }) {
+    if (event.button !== 0) return;
+    event.preventDefault(); // a divider drag is not a text selection
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizing = true;
+    dragStartY = event.clientY;
+    dragStartHeight = timelineHeight;
+    dragBudget = paneBudget;
+  }
+
+  function moveResize(event: PointerEvent) {
+    if (!resizing) return;
+    // dragging up grows the timeline, which is the direction it grows on screen
+    timelineHeight = clampTimelineHeight(
+      dragStartHeight + (dragStartY - event.clientY),
+      dragBudget,
+    );
+  }
+
+  function endResize(event: PointerEvent & { currentTarget: HTMLElement }) {
+    if (!resizing) return;
+    resizing = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    writeTimelineHeight(heightStorage, timelineHeight);
+  }
+
+  function setHeight(height: number) {
+    timelineHeight = clampTimelineHeight(height, paneBudget);
+    writeTimelineHeight(heightStorage, timelineHeight);
+  }
+
+  function onResizeKeydown(event: KeyboardEvent) {
+    const step = event.shiftKey ? 64 : 16;
+    const delta = event.key === "ArrowUp" ? step : event.key === "ArrowDown" ? -step : 0;
+    if (delta === 0) return;
+    event.preventDefault();
+    setHeight(timelineHeight + delta);
+  }
+
   // `inert` rather than an overlay alone: every one of these dialogs is a
   // decision about the document, and a Tab key that reaches the timeline behind
   // it would let the document move while the question is still open.
@@ -307,8 +415,11 @@
 
 <!-- An app shell above `lg` — the preview takes what header and footer leave;
      below it the page stacks and scrolls again, per spec §3.1. -->
-<main class="flex flex-col lg:min-h-0 lg:flex-1" inert={dialogOpen}>
-  <header class="shrink-0 space-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+<main bind:clientHeight={shellHeight} class="flex flex-col lg:min-h-0 lg:flex-1" inert={dialogOpen}>
+  <header
+    bind:clientHeight={headerHeight}
+    class="shrink-0 space-y-2 border-b border-gray-200 px-4 py-3 dark:border-gray-800"
+  >
     <div class="flex flex-wrap items-center gap-3">
       <div class="min-w-0 flex-1">
         <label class="sr-only" for="animation-name">Name</label>
@@ -465,11 +576,49 @@
     {/if}
   </section>
 
-  <footer class="min-w-0 shrink-0 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+  <!-- Only where there is a fixed shell to divide. Below `lg` the page stacks
+       and scrolls, so there is no space for the two panes to trade. -->
+  <!-- A focusable `separator` is the ARIA window splitter, which *is*
+       interactive — the rule these suppress only holds for the decorative kind. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    bind:clientHeight={dividerHeight}
+    role="separator"
+    aria-orientation="horizontal"
+    aria-label="Resize timeline"
+    aria-valuenow={timelineHeight}
+    aria-valuemin={MIN_TIMELINE_HEIGHT}
+    aria-valuemax={maxTimelineHeight}
+    aria-valuetext="Timeline {timelineHeight} pixels tall"
+    tabindex="0"
+    onpointerdown={startResize}
+    onpointermove={moveResize}
+    onpointerup={endResize}
+    onpointercancel={endResize}
+    onkeydown={onResizeKeydown}
+    ondblclick={() => setHeight(DEFAULT_TIMELINE_HEIGHT)}
+    title="Drag to resize — double-click to reset"
+    class="group hidden h-2.5 shrink-0 cursor-row-resize touch-none items-center justify-center border-y border-gray-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gray-500 lg:flex dark:border-gray-800 {resizing
+      ? 'bg-gray-200 dark:bg-gray-800'
+      : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-900 dark:hover:bg-gray-800'}"
+  >
+    <span
+      class="h-0.5 w-10 rounded-full transition-colors {resizing
+        ? 'bg-gray-500 dark:bg-gray-400'
+        : 'bg-gray-300 group-hover:bg-gray-400 dark:bg-gray-700 dark:group-hover:bg-gray-500'}"
+    ></span>
+  </div>
+
+  <footer
+    bind:clientHeight={footerHeight}
+    class="min-w-0 shrink-0 border-t border-gray-200 px-4 py-3 lg:border-t-0 dark:border-gray-800"
+  >
     <AnimationTimeline
       keyframes={editor.keyframes}
       {limits}
       {labels}
+      graphHeight={timelineHeight}
       bind:playheadMs
       bind:selectedIndex
       nearCap={editor.nearKeyframeCap}
