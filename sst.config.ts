@@ -105,6 +105,9 @@ export default $config({
       environment: {
         // sst dev serves the API from the local dev-server, not the deployed gateway
         PUBLIC_TRPC_URL: $dev ? "http://localhost:3001/trpc" : $interpolate`${apiUrl}/trpc`,
+        // Cloudflare Web Analytics. Public by nature — it ships in the page —
+        // and prod-only, so personal stages stay out of the numbers.
+        CF_BEACON_TOKEN: isProd ? "57ac47dbadc8470686378ac888fb7821" : "",
         ...authEnvironment,
       },
       assets: {
