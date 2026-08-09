@@ -9,7 +9,7 @@ const BACKOFF_MS = [20, 80];
 const OCC_CODES = new Set(["P2034", "40001"]);
 
 export function isOccConflict(error: unknown): boolean {
-  for (let cause = error; cause instanceof Error || (cause && typeof cause === "object"); ) {
+  for (let cause = error; cause instanceof Error || (cause && typeof cause === "object");) {
     if (OCC_CODES.has((cause as { code?: unknown }).code as string)) return true;
     cause = (cause as { cause?: unknown }).cause;
     if (!cause) break;

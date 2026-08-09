@@ -1,7 +1,11 @@
 <script lang="ts">
   import { Plus } from "@lucide/svelte";
   import { resolve } from "$app/paths";
+  import { listHref } from "$lib/animation/list-href";
+  import { isFiltered } from "$lib/animation/list-query";
   import AnimationCard from "$lib/components/animation-card/AnimationCard.svelte";
+  import AnimationFilters from "$lib/components/animation-list/AnimationFilters.svelte";
+  import ListPagination from "$lib/components/animation-list/ListPagination.svelte";
   import {
     ANIMATION_CAP_MESSAGE,
     ANIMATION_LIMIT,
@@ -11,10 +15,11 @@
 
   let { data } = $props();
 
-  // this list is every animation the user owns, so it is the count — no second
-  // query for a number already on the page
-  const owned = $derived(data.mine.length);
+  // the list is one filtered page, so the cap counter comes from the quota query
+  const owned = $derived(data.quota.count);
   const atCap = $derived(atAnimationCap(owned));
+
+  const hrefForPage = $derived((page: number) => listHref("/my", data.query, { page }));
 
   const newAnimationClasses =
     "inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200";
@@ -63,13 +68,19 @@
       </p>
     {/if}
 
-    {#if data.mine.length === 0}
+    <AnimationFilters query={data.query} robots={data.robots} route="/my" showVisibility />
+
+    {#if data.mine.items.length === 0}
       <p class="text-sm text-gray-600 dark:text-gray-400">
-        No animations saved yet — start one and it will show up here.
+        {#if isFiltered(data.query)}
+          No animations match these filters.
+        {:else}
+          No animations saved yet — start one and it will show up here.
+        {/if}
       </p>
     {:else}
       <ul class="divide-y divide-gray-200 dark:divide-gray-800">
-        {#each data.mine as item (item.id)}
+        {#each data.mine.items as item (item.id)}
           <li>
             <AnimationCard
               id={item.id}
@@ -96,6 +107,16 @@
           </li>
         {/each}
       </ul>
+    {/if}
+
+    <!-- also under an empty page: with filters on, the count is the answer -->
+    {#if data.mine.total > 0 || isFiltered(data.query)}
+      <ListPagination
+        page={data.mine.page}
+        pageCount={data.mine.pageCount}
+        total={data.mine.total}
+        {hrefForPage}
+      />
     {/if}
   </div>
 </main>

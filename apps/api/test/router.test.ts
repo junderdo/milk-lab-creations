@@ -278,33 +278,91 @@ describe("visibility", () => {
     expect(all.items).toHaveLength(2);
   });
 
-  it("pages the gallery with a cursor", async () => {
-    const ctx = makeContext({ sub: SUB });
+  /** Three public animations, oldest first in creation order: page0, page1, page2. */
+  async function seedGallery(ctx: ReturnType<typeof makeContext>, durationsMs = [500, 500, 500]) {
     await callerFor(ctx).users.me();
-    const ids: string[] = [];
-    for (let i = 0; i < 3; i++) {
-      const id = uuid();
-      ids.push(id);
-      ctx.fake.animations.push(
-        makeAnimationRow({
-          id,
-          ownerId: SUB,
-          name: `page${i}`,
-          visibility: "public",
-          createdAt: new Date(2026, 0, 1 + i), // distinct: newest last-created
-          updatedAt: new Date(2026, 0, 1 + i),
-        }),
-      );
-    }
+    return durationsMs.map((durationMs, i) => {
+      const row = makeAnimationRow({
+        ownerId: SUB,
+        name: `page${i}`,
+        visibility: "public",
+        durationMs,
+        createdAt: new Date(2026, 0, 1 + i),
+        updatedAt: new Date(2026, 0, 1 + i),
+      });
+      ctx.fake.animations.push(row);
+      return row.id;
+    });
+  }
+
+  it("pages the gallery by page number and reports the total", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const ids = await seedGallery(ctx);
 
     const anon = callerFor(makeContext({ db: ctx.fake }));
-    const first = await anon.animations.gallery({ limit: 2 });
+    const first = await anon.animations.gallery({ perPage: 2 });
     expect(first.items.map((i: { id: string }) => i.id)).toEqual([ids[2], ids[1]]);
-    expect(first.nextCursor).toBe(ids[1]);
+    expect(first).toMatchObject({ page: 1, pageCount: 2, total: 3 });
 
-    const second = await anon.animations.gallery({ limit: 2, cursor: first.nextCursor });
+    const second = await anon.animations.gallery({ perPage: 2, page: 2 });
     expect(second.items.map((i: { id: string }) => i.id)).toEqual([ids[0]]);
-    expect(second.nextCursor).toBeUndefined();
+    expect(second).toMatchObject({ page: 2, pageCount: 2, total: 3 });
+  });
+
+  it("clamps a page past the end onto the last page", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const ids = await seedGallery(ctx);
+
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    const beyond = await anon.animations.gallery({ perPage: 2, page: 99 });
+    expect(beyond.page).toBe(2);
+    expect(beyond.items.map((i: { id: string }) => i.id)).toEqual([ids[0]]);
+  });
+
+  it("treats a page number below the first page as the first page", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const ids = await seedGallery(ctx);
+
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    const below = await anon.animations.gallery({ perPage: 2, page: 0 });
+    expect(below.page).toBe(1);
+    expect(below.items.map((i: { id: string }) => i.id)).toEqual([ids[2], ids[1]]);
+  });
+
+  it("sorts the gallery across the whole result set, not just a page", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const ids = await seedGallery(ctx, [100, 900, 400]);
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+
+    const oldest = await anon.animations.gallery({ sort: "oldest", perPage: 1 });
+    expect(oldest.items.map((i: { id: string }) => i.id)).toEqual([ids[0]]);
+
+    const longest = await anon.animations.gallery({ sort: "longest", perPage: 1 });
+    expect(longest.items.map((i: { id: string }) => i.id)).toEqual([ids[1]]);
+
+    const byName = await anon.animations.gallery({ sort: "name" });
+    expect(byName.items.map((i: { name: string }) => i.name)).toEqual(["page0", "page1", "page2"]);
+  });
+
+  it("searches gallery names and descriptions case-insensitively", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await callerFor(ctx).users.me();
+    const wiggle = makeAnimationRow({ ownerId: SUB, name: "Wiggle", visibility: "public" });
+    const described = makeAnimationRow({
+      ownerId: SUB,
+      name: "Nod",
+      description: "a gentle WIGGLE of the ears",
+      visibility: "public",
+    });
+    const other = makeAnimationRow({ ownerId: SUB, name: "Spin", visibility: "public" });
+    ctx.fake.animations.push(wiggle, described, other);
+
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    const found = await anon.animations.gallery({ search: "wiggle" });
+    expect(found.total).toBe(2);
+    expect(found.items.map((i: { id: string }) => i.id).sort()).toEqual(
+      [wiggle.id, described.id].sort(),
+    );
   });
 
   it("revocation: flipping public back to private kills anonymous access", async () => {
@@ -378,7 +436,32 @@ describe("ownership", () => {
     await seedAnimation(otherCtx, { name: "Someone else's" });
 
     const mine = await callerFor(ctx).animations.mine();
-    expect(mine).toHaveLength(2);
+    expect(mine.items).toHaveLength(2);
+    expect(mine).toMatchObject({ page: 1, pageCount: 1, total: 2 });
+  });
+
+  it("mine filters by visibility and pages what is left", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await seedAnimation(ctx, { name: "Draft" });
+    await seedAnimation(ctx, { name: "Shared", visibility: "public" });
+    await seedAnimation(ctx, { name: "Also shared", visibility: "public" });
+
+    const publicOnly = await callerFor(ctx).animations.mine({ visibility: "public", perPage: 1 });
+    expect(publicOnly).toMatchObject({ total: 2, pageCount: 2, page: 1 });
+    expect(publicOnly.items).toHaveLength(1);
+  });
+
+  it("mine searches and sorts the owner's animations", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await seedAnimation(ctx, { name: "Wiggle" });
+    await seedAnimation(ctx, { name: "Nod" });
+
+    const caller = callerFor(ctx);
+    const searched = await caller.animations.mine({ search: "wig" });
+    expect(searched.items.map((i: { name: string }) => i.name)).toEqual(["Wiggle"]);
+
+    const sorted = await caller.animations.mine({ sort: "name" });
+    expect(sorted.items.map((i: { name: string }) => i.name)).toEqual(["Nod", "Wiggle"]);
   });
 });
 

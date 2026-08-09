@@ -70,10 +70,75 @@ export function makeAnimationRow(overrides: Partial<AnimationRow> = {}): Animati
   };
 }
 
+/** The subset of Prisma's filter grammar the routers actually build. */
+type TextFilter = { contains: string; mode?: "insensitive" };
+
+export interface AnimationWhere {
+  ownerId?: string;
+  visibility?: string;
+  robot?: { slug: string };
+  id?: { in: string[] };
+  OR?: Array<{ name?: TextFilter; description?: TextFilter }>;
+}
+
+type OrderBy = readonly Record<string, "asc" | "desc">[];
+
+function matchesText(value: string | null | undefined, filter: TextFilter): boolean {
+  if (value === null || value === undefined) return false;
+  const [haystack, needle] =
+    filter.mode === "insensitive"
+      ? [value.toLowerCase(), filter.contains.toLowerCase()]
+      : [value, filter.contains];
+  return haystack.includes(needle);
+}
+
+function compareValues(a: unknown, b: unknown): number {
+  if (a instanceof Date && b instanceof Date) return a.getTime() - b.getTime();
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b));
+}
+
+function compareBy(orderBy: OrderBy) {
+  return (a: AnimationRow, b: AnimationRow): number => {
+    const left: Record<string, unknown> = { ...a };
+    const right: Record<string, unknown> = { ...b };
+    for (const term of orderBy) {
+      for (const [field, direction] of Object.entries(term)) {
+        const cmp = compareValues(left[field], right[field]);
+        if (cmp !== 0) return direction === "desc" ? -cmp : cmp;
+      }
+    }
+    return 0;
+  };
+}
+
 export class FakeDb {
   users: UserRow[] = [];
   robots: RobotRow[] = [ROBO_CAT_EARS];
   animations: AnimationRow[] = [];
+
+  private matching(where: AnimationWhere = {}): AnimationRow[] {
+    return this.animations.filter((a) => {
+      if (where.ownerId && a.ownerId !== where.ownerId) return false;
+      if (where.visibility && a.visibility !== where.visibility) return false;
+      if (where.id && !where.id.in.includes(a.id)) return false;
+      if (where.robot) {
+        const robot = this.robots.find((r) => r.id === a.robotId);
+        if (robot?.slug !== where.robot.slug) return false;
+      }
+      if (
+        where.OR &&
+        !where.OR.some(
+          (clause) =>
+            (clause.name !== undefined && matchesText(a.name, clause.name)) ||
+            (clause.description !== undefined && matchesText(a.description, clause.description)),
+        )
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }
 
   /** Mirrors Prisma `select`: only requested fields come back off the wire. */
   private applySelect(view: Record<string, unknown>, select?: unknown) {
@@ -146,40 +211,19 @@ export class FakeDb {
       return include ? this.robotView(row) : { ...row };
     },
     findMany: async (args: {
-      where?: {
-        ownerId?: string;
-        visibility?: string;
-        robot?: { slug: string };
-        id?: { in: string[] };
-      };
+      where?: AnimationWhere;
       select?: unknown;
+      orderBy?: OrderBy;
       take?: number;
-      cursor?: { id: string };
       skip?: number;
     }) => {
-      let rows = this.animations.filter((a) => {
-        const w = args.where ?? {};
-        if (w.ownerId && a.ownerId !== w.ownerId) return false;
-        if (w.visibility && a.visibility !== w.visibility) return false;
-        if (w.id && !w.id.in.includes(a.id)) return false;
-        if (w.robot) {
-          const robot = this.robots.find((r) => r.id === a.robotId);
-          if (robot?.slug !== w.robot.slug) return false;
-        }
-        return true;
-      });
-      rows = [...rows].sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
-      );
-      if (args.cursor) {
-        const idx = rows.findIndex((r) => r.id === args.cursor!.id);
-        rows = idx === -1 ? [] : rows.slice(idx + (args.skip ?? 0));
-      }
+      let rows = this.matching(args.where);
+      rows = [...rows].sort(compareBy(args.orderBy ?? [{ createdAt: "desc" }, { id: "desc" }]));
+      if (args.skip !== undefined) rows = rows.slice(args.skip);
       if (args.take !== undefined) rows = rows.slice(0, args.take);
       return rows.map((r) => this.applySelect(this.robotView(r), args.select));
     },
-    count: async ({ where }: { where: { ownerId: string } }) =>
-      this.animations.filter((a) => a.ownerId === where.ownerId).length,
+    count: async ({ where }: { where?: AnimationWhere }) => this.matching(where).length,
     create: async ({
       data,
     }: {

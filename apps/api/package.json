@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./limits": "./src/limits.ts"
+    "./limits": "./src/limits.ts",
+    "./list": "./src/animation-list.ts"
   },
   "scripts": {
     "check": "prisma generate && tsc --noEmit",
