@@ -305,6 +305,14 @@
     drag(event, toPointer, hideReadout, hideReadout);
   }
 
+  /** A tap on a keyframe is a jump: the playhead lands exactly on its column. */
+  function jumpToColumn(index: number) {
+    const frame = keyframes[index];
+    if (frame === undefined) return;
+    pause();
+    playheadMs = frame.timeMs;
+  }
+
   function dragGrip(event: PointerEvent, index: number) {
     event.stopPropagation();
     if (gesturePointerId !== null) return; // an extra finger selects nothing either
@@ -324,11 +332,13 @@
         gripDrag = null;
         oncommit();
       }),
-      // tapped, not dragged: select and show the easing, per the settled model.
-      // Tapping another grip while the sheet is open is how it retargets.
+      // tapped, not dragged: select, jump the playhead to the column, and show
+      // the easing. Tapping another grip while the sheet is open is how it
+      // retargets.
       () => {
         hideReadout();
         gripDrag = null;
+        jumpToColumn(index);
         popoverOpen = true;
       },
     );
@@ -349,7 +359,8 @@
         );
       },
       hidingReadout(oncommit),
-      hideReadout,
+      // tapped, not dragged: a dot is the keyframe too, so it jumps the same way
+      hidingReadout(() => jumpToColumn(index)),
     );
   }
 
