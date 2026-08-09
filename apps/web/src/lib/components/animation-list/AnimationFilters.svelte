@@ -9,6 +9,7 @@
   import { goto } from "$app/navigation";
   import { listHref, type ListRoute } from "$lib/animation/list-href";
   import {
+    LIST_SORTS,
     listSortOf,
     visibilityFilterOf,
     type ListQuery,
@@ -62,7 +63,7 @@
         type="search"
         bind:this={searchInput}
         value={query.search}
-        placeholder="Search by name"
+        placeholder="Search names and descriptions"
         class="{fieldClasses} w-44"
       />
     </label>
@@ -71,21 +72,19 @@
     </button>
   </form>
 
-  {#if robots.length > 1}
-    <label class={labelClasses}>
-      Robot
-      <select
-        class={fieldClasses}
-        value={query.robotSlug}
-        onchange={(event) => apply({ robotSlug: event.currentTarget.value })}
-      >
-        <option value="">All robots</option>
-        {#each robots as robot (robot.slug)}
-          <option value={robot.slug}>{robot.name}</option>
-        {/each}
-      </select>
-    </label>
-  {/if}
+  <label class={labelClasses}>
+    Robot
+    <select
+      class={fieldClasses}
+      value={query.robotSlug}
+      onchange={(event) => apply({ robotSlug: event.currentTarget.value })}
+    >
+      <option value="">All robots</option>
+      {#each robots as robot (robot.slug)}
+        <option value={robot.slug}>{robot.name}</option>
+      {/each}
+    </select>
+  </label>
 
   {#if showVisibility}
     <label class={labelClasses}>
@@ -110,8 +109,8 @@
       value={query.sort}
       onchange={(event) => apply({ sort: listSortOf(event.currentTarget.value) })}
     >
-      {#each Object.entries(SORT_LABELS) as [value, label] (value)}
-        <option {value}>{label}</option>
+      {#each LIST_SORTS as value (value)}
+        <option {value}>{SORT_LABELS[value]}</option>
       {/each}
     </select>
   </label>

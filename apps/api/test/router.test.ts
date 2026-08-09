@@ -319,6 +319,16 @@ describe("visibility", () => {
     expect(beyond.items.map((i: { id: string }) => i.id)).toEqual([ids[0]]);
   });
 
+  it("treats a page number below the first page as the first page", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const ids = await seedGallery(ctx);
+
+    const anon = callerFor(makeContext({ db: ctx.fake }));
+    const below = await anon.animations.gallery({ perPage: 2, page: 0 });
+    expect(below.page).toBe(1);
+    expect(below.items.map((i: { id: string }) => i.id)).toEqual([ids[2], ids[1]]);
+  });
+
   it("sorts the gallery across the whole result set, not just a page", async () => {
     const ctx = makeContext({ sub: SUB });
     const ids = await seedGallery(ctx, [100, 900, 400]);

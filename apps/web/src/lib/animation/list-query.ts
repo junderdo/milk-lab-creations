@@ -58,6 +58,16 @@ export function parseListQuery(params: URLSearchParams): ListQuery {
   };
 }
 
+/**
+ * The gallery is public by definition, so a `visibility` param means nothing
+ * there — dropped rather than carried, or an empty gallery would blame a filter
+ * that was never applied.
+ */
+export const withoutVisibilityFilter = (query: ListQuery): ListQuery => ({
+  ...query,
+  visibility: "",
+});
+
 /** Whether anything is narrowing the list — an empty page says so differently. */
 export const isFiltered = (query: ListQuery): boolean =>
   query.search !== "" || query.robotSlug !== "" || query.visibility !== "";
@@ -68,9 +78,9 @@ export const isFiltered = (query: ListQuery): boolean =>
  * and usually an empty one.
  */
 export function listQuerySearch(current: ListQuery, changes: Partial<ListQuery> = {}): string {
-  const changesFilters = Object.keys(changes).some((key) => key !== "page");
+  const changesAFilter = Object.keys(changes).some((key) => key !== "page");
   const next: ListQuery = { ...current, ...changes };
-  const page = changes.page ?? (changesFilters ? DEFAULTS.page : next.page);
+  const page = changes.page ?? (changesAFilter ? DEFAULTS.page : next.page);
 
   const params = new URLSearchParams();
   if (page !== DEFAULTS.page) params.set(PARAM.page, String(page));

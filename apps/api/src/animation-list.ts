@@ -1,13 +1,11 @@
 /**
- * The shape of a paged animation list — shared by the public gallery and the
- * caller's own animations, which differ only in how they are scoped.
+ * A paged animation list, shared by the gallery and the caller's own.
  *
- * Paging is offset-based rather than by cursor: the sorts below are chosen by
- * the reader, and a cursor that survives a re-sort would have to encode the
- * sort key of every option. Offsets cost a count query and can skip a row that
- * is inserted mid-browse; for lists this size that is the better trade.
+ * Offsets rather than cursors: the reader picks the sort, and a cursor that
+ * survived a re-sort would have to encode every sort key.
  */
 import { z } from "zod";
+import type { Visibility } from "./visibility.ts";
 
 export const LIST_SORTS = ["newest", "oldest", "name", "longest"] as const;
 export type ListSort = (typeof LIST_SORTS)[number];
@@ -20,13 +18,15 @@ export const listInputSchema = z.object({
   robotSlug: z.string().optional(),
   search: z.string().max(SEARCH_MAX).optional(),
   sort: z.enum(LIST_SORTS).default("newest"),
-  page: z.number().int().min(1).default(1),
+  // a page number is navigation, not an assertion: nonsense lands on page 1
+  // and a page past the end lands on the last one (see pageWindow)
+  page: z.number().int().min(1).catch(1).default(1),
   perPage: z.number().int().min(1).max(MAX_PER_PAGE).default(DEFAULT_PER_PAGE),
 });
 
 export interface ListScope {
   ownerId?: string;
-  visibility?: string;
+  visibility?: Visibility;
   robotSlug?: string;
   search?: string;
 }

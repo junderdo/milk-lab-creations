@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { listQuerySearch, parseListQuery, type ListQuery } from "./list-query";
+import {
+  isFiltered,
+  listQuerySearch,
+  parseListQuery,
+  withoutVisibilityFilter,
+  type ListQuery,
+} from "./list-query";
 
 const parse = (search: string) => parseListQuery(new URLSearchParams(search));
 
@@ -35,6 +41,18 @@ describe("parseListQuery", () => {
     expect(parse("page=nope").page).toBe(1);
     expect(parse("page=0").page).toBe(1);
     expect(parse("page=-4").page).toBe(1);
+  });
+});
+
+describe("withoutVisibilityFilter", () => {
+  it("drops a visibility a public list cannot honour", () => {
+    const query = withoutVisibilityFilter(parse("visibility=private&q=wiggle"));
+    expect(query).toMatchObject({ visibility: "", search: "wiggle" });
+    expect(isFiltered(query)).toBe(true);
+  });
+
+  it("leaves an otherwise unfiltered list reading as unfiltered", () => {
+    expect(isFiltered(withoutVisibilityFilter(parse("visibility=private")))).toBe(false);
   });
 });
 

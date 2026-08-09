@@ -49,7 +49,10 @@
           </li>
         {/each}
       </ul>
+    {/if}
 
+    <!-- also under an empty page: with filters on, the count is the answer -->
+    {#if data.gallery.total > 0 || isFiltered(data.query)}
       <ListPagination
         page={data.gallery.page}
         pageCount={data.gallery.pageCount}

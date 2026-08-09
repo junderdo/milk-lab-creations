@@ -18,12 +18,12 @@ import {
   type AnimationPayload,
 } from "./payload.ts";
 import { authedProcedure, publicProcedure, router, StaleWriteError } from "./trpc.ts";
+import { VISIBILITIES, type Visibility } from "./visibility.ts";
 
 /** Account deletion batch size — comfortably under DSQL's 3,000-row/10 MiB. */
 const DELETE_BATCH_SIZE = 200;
 
-const VISIBILITIES = ["private", "unlisted", "public"] as const;
-export type Visibility = (typeof VISIBILITIES)[number];
+export type { Visibility };
 
 const nameSchema = z.string().trim().min(1).max(NAME_MAX);
 const descriptionSchema = z.string().trim().max(DESCRIPTION_MAX);
@@ -95,15 +95,15 @@ const animationListSelect = {
 
 /**
  * One page of a list, plus what the client needs to draw the pager. The scope
- * is what makes a list the gallery or the caller's own; everything else — the
- * filters, the sort, the paging — is the same query either way.
+ * is what makes a list the gallery or the caller's own; everything the caller
+ * asked for — the filters, the sort, the paging — is the same query either way.
  */
 async function listAnimations(
   ctx: Context,
   input: z.infer<typeof listInputSchema>,
-  scope: ListScope,
+  scope: Pick<ListScope, "ownerId" | "visibility">,
 ) {
-  const where = listWhere({ ...scope, search: input.search });
+  const where = listWhere({ ...scope, robotSlug: input.robotSlug, search: input.search });
   const total = await ctx.db.animation.count({ where });
   const { page, pageCount, skip, take } = pageWindow({
     page: input.page,
@@ -226,18 +226,12 @@ const robotsRouter = router({
 const animationsRouter = router({
   gallery: publicProcedure
     .input(listInputSchema.default({}))
-    .query(({ ctx, input }) =>
-      listAnimations(ctx, input, { visibility: "public", robotSlug: input.robotSlug }),
-    ),
+    .query(({ ctx, input }) => listAnimations(ctx, input, { visibility: "public" })),
 
   mine: authedProcedure
     .input(listInputSchema.extend({ visibility: z.enum(VISIBILITIES).optional() }).default({}))
     .query(({ ctx, input }) =>
-      listAnimations(ctx, input, {
-        ownerId: ctx.dbUser.id,
-        visibility: input.visibility,
-        robotSlug: input.robotSlug,
-      }),
+      listAnimations(ctx, input, { ownerId: ctx.dbUser.id, visibility: input.visibility }),
     ),
 
   /**
