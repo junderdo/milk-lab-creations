@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ABF0 hardware spike</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #111827;
+        --muted: #6b7280;
+        --line: #d1d5db;
+        --panel: #f9fafb;
+        --ok: #15803d;
+        --bad: #b91c1c;
+        --accent: #1d4ed8;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #030712;
+          --fg: #f3f4f6;
+          --muted: #9ca3af;
+          --line: #374151;
+          --panel: #111827;
+          --ok: #4ade80;
+          --bad: #f87171;
+          --accent: #93c5fd;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 1.25rem;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14px/1.5 ui-sans-serif,
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 68rem;
+        margin: 0 auto;
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+      @media (max-width: 60rem) {
+        main {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+      h1 {
+        grid-column: 1 / -1;
+        margin: 0;
+        font-size: 1.25rem;
+      }
+      h1 small {
+        display: block;
+        font-weight: 400;
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+      }
+      section {
+        border: 1px solid var(--line);
+        border-radius: 0.5rem;
+        padding: 0.75rem 0.9rem 0.9rem;
+        background: var(--panel);
+        min-width: 0;
+      }
+      section h2 {
+        margin: 0 0 0.5rem;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      button {
+        font: inherit;
+        padding: 0.35rem 0.7rem;
+        margin: 0 0.35rem 0.35rem 0;
+        border: 1px solid var(--line);
+        border-radius: 0.375rem;
+        background: var(--bg);
+        color: var(--fg);
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      label {
+        color: var(--muted);
+        margin-right: 0.5rem;
+      }
+      input[type="number"] {
+        font: inherit;
+        width: 6rem;
+        padding: 0.3rem 0.4rem;
+        border: 1px solid var(--line);
+        border-radius: 0.375rem;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      .log {
+        grid-column: 1 / -1;
+      }
+      pre {
+        margin: 0;
+        max-height: 32rem;
+        overflow: auto;
+        font:
+          12px/1.45 ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .ok {
+        color: var(--ok);
+      }
+      .bad {
+        color: var(--bad);
+      }
+      .dim {
+        color: var(--muted);
+      }
+      .status {
+        font:
+          12px/1.4 ui-monospace,
+          monospace;
+        color: var(--muted);
+        margin-top: 0.4rem;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin: 0.4rem 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>
+        ABF0 hardware spike
+        <small
+          >Measures what the ears actually do, not what the docs claim. Open in Windows Chrome —
+          Web Bluetooth has no adapter inside WSL2. Every action appends to the log; use
+          <em>Copy log</em> at the end.</small
+        >
+      </h1>
+
+      <section>
+        <h2>1 · Connect</h2>
+        <button id="connect-service">Filter on service 0xABF0</button>
+        <button id="connect-name">Filter on name ROBO_CAT_EARS</button>
+        <button id="connect-all">Accept all devices</button>
+        <button id="disconnect" disabled>Disconnect</button>
+        <p class="note">
+          The ears advertise the 16-bit UUID (<code>0x03 0x03 F0 AB</code>) and the complete local
+          name, so both filters should work. Try both — which one wins decides what the web app
+          ships.
+        </p>
+        <div class="status" id="conn-status">not connected</div>
+      </section>
+
+      <section>
+        <h2>2 · Discover</h2>
+        <button id="discover" disabled>Dump service 0xABF0</button>
+        <p class="note">
+          Records every reachable characteristic and its property flags. The firmware declares ABF2
+          as READ + <strong>INDICATE</strong> while sending unconfirmed notifications — this is
+          where that shows up.
+        </p>
+      </section>
+
+      <section>
+        <h2>3 · Read &amp; subscribe ABF2</h2>
+        <button id="read-abf2" disabled>Read ABF2</button>
+        <button id="subscribe" disabled>Subscribe</button>
+        <button id="unsubscribe" disabled>Unsubscribe</button>
+        <button id="read-cccd" disabled>Read CCCD (0x2902)</button>
+        <p class="note">
+          CCCD <code>01 00</code> means Chrome enabled notifications, <code>02 00</code> means
+          indications. The firmware sends with <code>need_confirm = false</code> either way.
+        </p>
+      </section>
+
+      <section>
+        <h2>4 · Lighting write (safe, observable)</h2>
+        <button data-light="255,0,0">Red</button>
+        <button data-light="0,255,0">Green</button>
+        <button data-light="0,0,255">Blue</button>
+        <button data-light="255,255,255">White</button>
+        <button data-light="0,0,0">Off</button>
+        <p class="note">
+          Packet <code>02 &lt;mode&gt; &lt;speed&gt; 01 RR GG BB</code> — 7 bytes, solid mode. If the
+          LEDs change, the write path works end to end.
+        </p>
+      </section>
+
+      <section>
+        <h2>5 · Write-with-response probe</h2>
+        <button id="probe-response" disabled>writeValueWithResponse on ABF1</button>
+        <p class="note">
+          ABF1 is WRITE_NO_RESPONSE only today. Expected to reject — the point is to record
+          <em>how</em> it fails, since the store protocol needs this property added in firmware.
+        </p>
+      </section>
+
+      <section>
+        <h2>6 · Raw size probe (ATT layer)</h2>
+        <label for="raw-from">from</label><input id="raw-from" type="number" value="20" />
+        <label for="raw-to">to</label><input id="raw-to" type="number" value="600" />
+        <label for="raw-step">step</label><input id="raw-step" type="number" value="20" />
+        <br />
+        <button id="raw-ramp" disabled>Ramp writes to ABF1</button>
+        <p class="note">
+          Payloads start with type byte <code>0x00</code>, which the firmware's unpack rejects — the
+          ears ignore them entirely. This measures only whether the <em>browser</em> throws, which
+          answers "are oversized writes silently dropped or surfaced as an error".
+        </p>
+      </section>
+
+      <section>
+        <h2>7 · Delivery ceiling (the real question)</h2>
+        <p class="note" style="margin-top: 0">
+          Sends a complete one-chunk custom animation of K keyframes. The firmware refuses to play a
+          truncated payload (<code>data_len &lt; 1 + count × 12</code>), so
+          <strong>the ears moving is proof every byte arrived</strong>. Ramp K until they stop
+          moving, and mark each result.
+        </p>
+        <label for="kf">keyframes</label><input id="kf" type="number" value="4" min="1" max="42" />
+        <span class="dim" id="kf-size">= 65 bytes</span><br />
+        <button id="send-anim" disabled>Send animation</button>
+        <button id="mark-moved" disabled>✓ ears moved</button>
+        <button id="mark-still" disabled>✗ nothing happened</button>
+        <div class="status" id="anim-status">
+          42 keyframes = 509 bytes, the largest single chunk that fits the 512-byte attribute.
+        </div>
+      </section>
+
+      <section class="log">
+        <h2>Log</h2>
+        <button id="copy-log">Copy log</button>
+        <button id="clear-log">Clear</button>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script>
+      const SERVICE = 0xabf0;
+      const ABF1 = 0xabf1;
+      const ABF2 = 0xabf2;
+      const CCCD = 0x2902;
+      const KEYFRAME_SIZE = 12;
+      const CHUNK_HEADER = 3;
+
+      const logEl = document.getElementById("log");
+      const lines = [];
+
+      function log(text, cls) {
+        const stamp = new Date().toISOString().slice(11, 23);
+        lines.push(`${stamp}  ${text}`);
+        const span = document.createElement("span");
+        if (cls) span.className = cls;
+        span.textContent = `${stamp}  ${text}\n`;
+        logEl.appendChild(span);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function hex(buffer) {
+        const bytes = new Uint8Array(
+          buffer instanceof DataView ? buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) : buffer,
+        );
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(" ");
+      }
+
+      let device = null;
+      let server = null;
+      let service = null;
+      let abf1 = null;
+      let abf2 = null;
+      let lastAnimSize = null;
+      let lastAnimKeyframes = null;
+
+      const ids = [
+        "discover",
+        "read-abf2",
+        "subscribe",
+        "read-cccd",
+        "probe-response",
+        "raw-ramp",
+        "send-anim",
+        "disconnect",
+      ];
+
+      function setConnected(on) {
+        for (const id of ids) document.getElementById(id).disabled = !on;
+        document.getElementById("unsubscribe").disabled = true;
+        for (const b of document.querySelectorAll("[data-light]")) b.disabled = !on;
+        document.getElementById("conn-status").textContent = on
+          ? `connected to ${device?.name ?? "(unnamed)"} — id ${device?.id ?? "?"}`
+          : "not connected";
+      }
+
+      async function connect(options, label) {
+        try {
+          log(`requestDevice — ${label}`);
+          device = await navigator.bluetooth.requestDevice(options);
+          log(`picked "${device.name ?? "(no name)"}" id=${device.id}`, "ok");
+          device.addEventListener("gattserverdisconnected", () => {
+            log("gattserverdisconnected", "bad");
+            setConnected(false);
+          });
+          server = await device.gatt.connect();
+          log("GATT connected", "ok");
+          service = await server.getPrimaryService(SERVICE);
+          log("got primary service 0xabf0", "ok");
+          abf1 = await service.getCharacteristic(ABF1);
+          abf2 = await service.getCharacteristic(ABF2);
+          log("got ABF1 and ABF2", "ok");
+          setConnected(true);
+        } catch (err) {
+          log(`FAILED (${label}): ${err.name}: ${err.message}`, "bad");
+        }
+      }
+
+      document.getElementById("connect-service").onclick = () =>
+        connect({ filters: [{ services: [SERVICE] }] }, "filter services:[0xABF0]");
+
+      document.getElementById("connect-name").onclick = () =>
+        connect(
+          { filters: [{ name: "ROBO_CAT_EARS" }], optionalServices: [SERVICE] },
+          "filter name:ROBO_CAT_EARS + optionalServices",
+        );
+
+      document.getElementById("connect-all").onclick = () =>
+        connect(
+          { acceptAllDevices: true, optionalServices: [SERVICE] },
+          "acceptAllDevices + optionalServices",
+        );
+
+      document.getElementById("disconnect").onclick = () => {
+        device?.gatt?.disconnect();
+        log("disconnect() called");
+        setConnected(false);
+      };
+
+      const PROPERTY_FLAGS = [
+        "broadcast",
+        "read",
+        "writeWithoutResponse",
+        "write",
+        "notify",
+        "indicate",
+        "authenticatedSignedWrites",
+        "reliableWrite",
+        "writableAuxiliaries",
+      ];
+
+      function describeProperties(props) {
+        return PROPERTY_FLAGS.filter((flag) => props[flag]).join(", ");
+      }
+
+      document.getElementById("discover").onclick = async () => {
+        try {
+          const chars = await service.getCharacteristics();
+          log(`service 0xabf0 exposes ${chars.length} characteristics:`);
+          for (const c of chars) {
+            log(`  ${c.uuid}  props: ${describeProperties(c.properties) || "(none)"}`);
+            const descriptors = await c.getDescriptors().catch(() => []);
+            for (const d of descriptors) log(`      descriptor ${d.uuid}`);
+          }
+        } catch (err) {
+          log(`discover failed: ${err.name}: ${err.message}`, "bad");
+        }
+      };
+
+      document.getElementById("read-abf2").onclick = async () => {
+        try {
+          const value = await abf2.readValue();
+          log(`ABF2 read ${value.byteLength} bytes: ${hex(value)}`, "ok");
+        } catch (err) {
+          log(`ABF2 read failed: ${err.name}: ${err.message}`, "bad");
+        }
+      };
+
+      function onNotification(event) {
+        const v = event.target.value;
+        log(`NOTIFY ABF2 ${v.byteLength} bytes: ${hex(v)}`, "ok");
+      }
+
+      document.getElementById("subscribe").onclick = async () => {
+        try {
+          abf2.addEventListener("characteristicvaluechanged", onNotification);
+          await abf2.startNotifications();
+          log("startNotifications() resolved", "ok");
+          document.getElementById("unsubscribe").disabled = false;
+        } catch (err) {
+          log(`startNotifications failed: ${err.name}: ${err.message}`, "bad");
+        }
+      };
+
+      document.getElementById("unsubscribe").onclick = async () => {
+        try {
+          await abf2.stopNotifications();
+          abf2.removeEventListener("characteristicvaluechanged", onNotification);
+          log("stopNotifications() resolved");
+          document.getElementById("unsubscribe").disabled = true;
+        } catch (err) {
+          log(`stopNotifications failed: ${err.name}: ${err.message}`, "bad");
+        }
+      };
+
+      document.getElementById("read-cccd").onclick = async () => {
+        try {
+          const cccd = await abf2.getDescriptor(CCCD);
+          const value = await cccd.readValue();
+          log(`CCCD = ${hex(value)}  (01 00 = notify, 02 00 = indicate)`, "ok");
+        } catch (err) {
+          log(`CCCD read failed: ${err.name}: ${err.message}`, "bad");
+        }
+      };
+
+      async function writeABF1(bytes, label) {
+        if (abf1.writeValueWithoutResponse) {
+          await abf1.writeValueWithoutResponse(bytes);
+        } else {
+          await abf1.writeValue(bytes);
+        }
+        log(`wrote ${bytes.length} bytes to ABF1 — ${label}`, "ok");
+      }
+
+      for (const button of document.querySelectorAll("[data-light]")) {
+        button.onclick = async () => {
+          const [r, g, b] = button.dataset.light.split(",").map(Number);
+          const packet = new Uint8Array([0x02, 0x00, 50, 0x01, r, g, b]);
+          try {
+            await writeABF1(packet, `lighting solid rgb(${r},${g},${b}): ${hex(packet)}`);
+          } catch (err) {
+            log(`lighting write failed: ${err.name}: ${err.message}`, "bad");
+          }
+        };
+      }
+
+      document.getElementById("probe-response").onclick = async () => {
+        const packet = new Uint8Array([0x02, 0x00, 50, 0x01, 255, 255, 255]);
+        try {
+          await abf1.writeValueWithResponse(packet);
+          log("writeValueWithResponse RESOLVED — ABF1 accepted a write request", "ok");
+        } catch (err) {
+          log(`writeValueWithResponse rejected: ${err.name}: ${err.message}`, "bad");
+        }
+      };
+
+      document.getElementById("raw-ramp").onclick = async () => {
+        const from = Number(document.getElementById("raw-from").value);
+        const to = Number(document.getElementById("raw-to").value);
+        const step = Number(document.getElementById("raw-step").value);
+        log(`raw ramp ${from}→${to} step ${step} (type byte 0x00, firmware ignores)`);
+        for (let size = from; size <= to; size += step) {
+          const bytes = new Uint8Array(size);
+          try {
+            if (abf1.writeValueWithoutResponse) await abf1.writeValueWithoutResponse(bytes);
+            else await abf1.writeValue(bytes);
+            log(`  ${String(size).padStart(4)} bytes — resolved`, "ok");
+          } catch (err) {
+            log(`  ${String(size).padStart(4)} bytes — ${err.name}: ${err.message}`, "bad");
+          }
+        }
+        log("raw ramp done — note this proves nothing about delivery, only about the JS API");
+      };
+
+      function buildAnimation(keyframeCount) {
+        const bytes = new Uint8Array(1 + keyframeCount * KEYFRAME_SIZE);
+        bytes[0] = keyframeCount;
+        let offset = 1;
+        for (let i = 0; i < keyframeCount; i++) {
+          const timeMs = i * 120;
+          const swing = i % 2 === 0 ? 65 : 115;
+          bytes[offset++] = (timeMs >> 8) & 0xff;
+          bytes[offset++] = timeMs & 0xff;
+          bytes[offset++] = swing;
+          bytes[offset++] = 90;
+          bytes[offset++] = swing;
+          bytes[offset++] = 90;
+          bytes[offset++] = 1;
+          bytes[offset++] = 1;
+          bytes[offset++] = 0;
+          bytes[offset++] = 60;
+          bytes[offset++] = 0;
+          bytes[offset++] = 60;
+        }
+        return bytes;
+      }
+
+      function animPacketSize(keyframeCount) {
+        return 1 + CHUNK_HEADER + 1 + keyframeCount * KEYFRAME_SIZE;
+      }
+
+      const kfInput = document.getElementById("kf");
+      const kfSize = document.getElementById("kf-size");
+      const updateSize = () => {
+        kfSize.textContent = `= ${animPacketSize(Number(kfInput.value))} bytes`;
+      };
+      kfInput.oninput = updateSize;
+      updateSize();
+
+      let transferId = 0;
+
+      document.getElementById("send-anim").onclick = async () => {
+        const keyframeCount = Number(kfInput.value);
+        const animation = buildAnimation(keyframeCount);
+        const packet = new Uint8Array(1 + CHUNK_HEADER + animation.length);
+        packet[0] = 0x05;
+        packet[1] = transferId = (transferId + 1) & 0xff;
+        packet[2] = 0;
+        packet[3] = 1;
+        packet.set(animation, 4);
+        lastAnimKeyframes = keyframeCount;
+        lastAnimSize = packet.length;
+        try {
+          await writeABF1(packet, `custom animation, ${keyframeCount} keyframes, single chunk`);
+          document.getElementById("mark-moved").disabled = false;
+          document.getElementById("mark-still").disabled = false;
+          document.getElementById("anim-status").textContent =
+            `sent ${packet.length} bytes — did the ears move?`;
+        } catch (err) {
+          log(`animation write failed at ${packet.length} bytes: ${err.name}: ${err.message}`, "bad");
+        }
+      };
+
+      function mark(moved) {
+        log(
+          `RESULT  ${String(lastAnimSize).padStart(4)} bytes (${lastAnimKeyframes} keyframes) — ${
+            moved ? "DELIVERED, ears moved" : "NOT DELIVERED, ears still"
+          }`,
+          moved ? "ok" : "bad",
+        );
+        document.getElementById("mark-moved").disabled = true;
+        document.getElementById("mark-still").disabled = true;
+        document.getElementById("anim-status").textContent = "recorded — try the next size";
+      }
+
+      document.getElementById("mark-moved").onclick = () => mark(true);
+      document.getElementById("mark-still").onclick = () => mark(false);
+
+      document.getElementById("copy-log").onclick = async () => {
+        await navigator.clipboard.writeText(lines.join("\n"));
+        log("(log copied to clipboard)", "dim");
+      };
+
+      document.getElementById("clear-log").onclick = () => {
+        lines.length = 0;
+        logEl.textContent = "";
+      };
+
+      log(`userAgent: ${navigator.userAgent}`, "dim");
+      log(`platform: ${navigator.platform ?? "?"}`, "dim");
+      if (!navigator.bluetooth) {
+        log("navigator.bluetooth is UNDEFINED — not a Web Bluetooth browser, or insecure context", "bad");
+      } else {
+        navigator.bluetooth
+          .getAvailability()
+          .then((available) =>
+            log(`navigator.bluetooth.getAvailability() = ${available}`, available ? "ok" : "bad"),
+          );
+      }
+    </script>
+  </body>
+</html>
