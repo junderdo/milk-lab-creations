@@ -22,8 +22,9 @@ Edit the right-hand column to match whatever vocabulary you actually use.
   first use:
   `trello label:create --board "Milk Lab Creations" -n "needs-triage" --color <color>`
 - Apply with `trello card:label --board "Milk Lab Creations" --list "<current list>" --card "<title>" --label "<label>"`.
-- The CLI cannot **remove** a label. Treat triage labels as additive markers and let the
-  Todo / In Progress / Done list position carry live workflow state; strip a stale label in the
-  Trello UI if it genuinely misleads.
+- Remove with `trello card:unlabel --board "Milk Lab Creations" --list "<current list>" --card "<title>" --label "<label>"`.
+  Since the five roles are mutually exclusive, a transition is an `unlabel` of the old role followed
+  by a `label` of the new one — the Todo / In Progress / Done position still carries workflow state,
+  but a card should never wear two triage labels at once.
 - `wontfix` is the one role where the label matters more than the list — a wontfix card should carry
   the label *and* move to Done, so Todo stays a true queue.

@@ -23,15 +23,22 @@ in. Add `--format json` to any command when you need to parse the output.
   when you know the list.
 - **Comment**: `trello card:comment --board "Milk Lab Creations" --list "<list>" --card "<title>" --text "..."`
 - **Read comments**: `trello card:comments --board "Milk Lab Creations" --list "<list>" --card "<title>"`
-- **Apply a label**: `trello card:label --board "Milk Lab Creations" --list "<list>" --card "<title>" --label "<label>"`
+- **Apply a label**: `trello card:label --board "Milk Lab Creations" --list "<list>" --card "<title>" --label "<label>"`;
+  remove one with `trello card:unlabel ... --label "<label>"`
+- **Assign**: `trello card:assign --board "Milk Lab Creations" --list "<list>" --card "<title>" --user <username>`.
+  The username must be a real Trello username (`jeffreyunderdown`) — `--user me` fails with a 400.
+  Confusingly, `trello card:assigned-to --user me` *does* work; `me` is that command's default.
 - **Move between lists** (this is how state changes): `trello card:move --board "Milk Lab Creations" --list "Todo" --card "<title>" --to "In Progress"`
 - **Close**: move the card to **Done**. Reserve `trello card:archive` for cards that were mistakes or
   duplicates — a card that got built belongs in Done, not archived.
 - **Search**: `trello search --query "some text" --board "Milk Lab Creations" --type cards`
 - **Labels on the board**: `trello label:list --board "Milk Lab Creations"`;
   create one with `trello label:create --board "Milk Lab Creations" -n "<name>" --color <green|yellow|orange|red|purple|blue|sky|lime|pink|black>`
-- **Checklists**: `trello card:checklist ... -n "<name>"` to add one;
-  `trello card:check-item ... --item "<item>" --state complete|incomplete [--checklist "<name>"]` to tick items.
+- **Checklists**: `trello card:checklist ... -n "<name>"` creates an empty checklist and
+  `trello card:check-item ... --item "<item>" --state complete|incomplete [--checklist "<name>"]`
+  ticks an existing item — but **the CLI cannot add items to a checklist, or delete a checklist**.
+  A checklist created from the CLI stays empty forever unless a human fills it in through the web UI.
+  Don't build a workflow on checklists.
 
 ### Card body shape
 
@@ -77,15 +84,18 @@ Used by `/wayfinder`. The **map** is a card with one **child** card per ticket.
   body. Create with `trello card:create --board "Milk Lab Creations" --list "Todo" -n "Spec: <effort>" --label "wayfinder:map"`.
 - **Child ticket**: its own card in **Todo**, labelled `wayfinder:<type>`
   (`research` / `prototype` / `grilling` / `task`), with `## Parent` in the description linking the
-  map card's URL. Trello has no native parent/child, so the link plus a checklist on the map card is
-  the representation.
+  map card's URL. Trello has no native parent/child, and the CLI cannot populate a checklist, so
+  **the `## Parent` link is the whole representation** — every child must carry it.
 - **Blocking**: the `## Blocked by` section of the child's description, listing blocker card titles
   and URLs. A ticket is unblocked when every card it lists is in **Done**.
 - **Frontier query**: list **Todo** (`trello card:list --board "Milk Lab Creations" --list "Todo"`),
   drop cards whose `## Blocked by` names a card not yet in Done, drop cards with a member assigned;
   first in board order wins.
-- **Claim**: `trello card:assign --board "Milk Lab Creations" --list "Todo" --card "<title>" --user <me>`
-  and move it to **In Progress** — the session's first write.
+- **Claim**: `trello card:assign --board "Milk Lab Creations" --list "Todo" --card "<title>" --user jeffreyunderdown`
+  and move it to **In Progress** — the session's first write. `--user me` fails.
+- **Create then wire**: create child cards in **dependency order** so each blocker's URL already
+  exists when the card that lists it is created. That collapses wayfinder's create-then-wire two-pass
+  into one pass, since `## Blocked by` is written at create time.
 - **Resolve**: `trello card:comment` the answer onto the card, move it to **Done**, then append a
   context pointer (gist + card URL) to the map card's Decisions-so-far.
 
@@ -93,9 +103,12 @@ Used by `/wayfinder`. The **map** is a card with one **child** card per ticket.
 
 - **`--list` must be the card's *current* list.** After a `card:move`, later commands need the new
   list name. Commands that take a card ID (`card:get-by-id`) sidestep this.
-- **Labels are add-only through the CLI.** There is no `card:unlabel`. Where a skill says to *remove*
-  a triage label, either do it in the Trello UI or — better — let the list position carry the state
-  and leave the label as a historical marker.
+- **Long descriptions fail with a 414.** The CLI puts `--description` in the request URL, so
+  `card:create` and `card:update` reject bodies past roughly **6 KB** with
+  `AxiosError: Request failed with status code 414`. Long card titles and board names eat into the
+  same budget. Keep a map card's body an index — gists plus links — and let detail live in the
+  child cards and in resolution comments. `card:comment --text` is not affected; comments of ~8 KB
+  post fine.
 - **Duplicate label names exist on this board** (`wayfinder:task`, `wayfinder:prototype`, and
   `wayfinder:grilling` each exist in two colors). Lookup by name may hit either. Run
   `trello label:list --board "Milk Lab Creations"` before assuming, and prefer the color already in
