@@ -5,8 +5,13 @@
   import logo from "$lib/assets/milk-lab-logo.svg";
   import { setAccessToken } from "$lib/trpc";
   import ThemeToggle from "$lib/components/theme-toggle/ThemeToggle.svelte";
+  // PROTOTYPE — throwaway, spike/connect-upload-ux. Variants A and B put the
+  // connection in the header; C deliberately does not.
+  import { page } from "$app/state";
+  import EarsChip from "$lib/ble/PROTOTYPE-EarsChip.svelte";
 
   let { data, children } = $props();
+  const globalEars = $derived(["A", "B"].includes(page.url.searchParams.get("variant") ?? "A"));
 
   // hand the server-minted access token to the in-memory browser client
   $effect(() => {
@@ -47,6 +52,7 @@
         {/if}
       </div>
       <div class="flex items-center gap-3">
+        {#if globalEars}<EarsChip />{/if}
         <ThemeToggle />
         {#if data.me}
           <span class="text-sm text-gray-600 dark:text-gray-400">{data.me.displayName}</span>

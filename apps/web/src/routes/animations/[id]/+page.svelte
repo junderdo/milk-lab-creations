@@ -10,8 +10,15 @@
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
   import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
+  // PROTOTYPE — throwaway, spike/connect-upload-ux. Remove with the branch.
+  import { page } from "$app/state";
+  import PrototypeSwitcher from "$lib/components/PROTOTYPE-switcher/PrototypeSwitcher.svelte";
+  import VariantA from "./PROTOTYPE-VariantA.svelte";
+  import VariantB from "./PROTOTYPE-VariantB.svelte";
+  import VariantC from "./PROTOTYPE-VariantC.svelte";
 
   let { data } = $props();
+  const variant = $derived(page.url.searchParams.get("variant") ?? "A");
   const animation = $derived(data.animation);
   const keyframes = $derived(keyframesFromPayload(animation.payload));
   const modelUrl = $derived(animation.robot ? modelUrlFor(animation.robot.slug) : null);
@@ -153,5 +160,22 @@
         {/if}
       </div>
     </section>
+
+    <!-- PROTOTYPE — throwaway, spike/connect-upload-ux. All three variants sit
+         in the same slot so they are judged against the same page density. -->
+    <section class={variant === "C" ? "" : "max-w-xs"}>
+      {#if variant === "A"}
+        <VariantA {animation} keyframeCount={keyframes.length} />
+      {:else if variant === "B"}
+        <VariantB {animation} keyframeCount={keyframes.length} />
+      {:else}
+        <VariantC {animation} keyframeCount={keyframes.length} />
+      {/if}
+    </section>
   </div>
+
+  <PrototypeSwitcher
+    variants={["A", "B", "C"]}
+    names={{ A: "Slot grid dialog", B: "Device dock", C: "Inline wizard" }}
+  />
 </main>
