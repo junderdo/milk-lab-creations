@@ -565,7 +565,10 @@
         />
       </div>
 
-      <div class="flex shrink-0 items-center gap-3">
+      <!-- Wraps within itself: on a phone the whole group is wider than the
+           screen, and a group that can only wrap as a unit overflows into a
+           horizontal scrollbar instead. -->
+      <div class="flex min-w-0 flex-wrap items-center gap-3">
         <!-- Absent until the animation exists: nothing to publish yet. -->
         {#if visibility !== null}
           <label class="sr-only" for="animation-visibility">Who can see this</label>
