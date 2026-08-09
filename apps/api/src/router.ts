@@ -1,5 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import {
+  listInputSchema,
+  listOrderBy,
+  listWhere,
+  pageWindow,
+  type ListScope,
+} from "./animation-list.ts";
 import type { Context } from "./context.ts";
 import { withOccRetry } from "./occ.ts";
 import { DESCRIPTION_MAX, MAX_ANIMATIONS_PER_USER, NAME_MAX } from "./limits.ts";
@@ -85,6 +92,33 @@ const animationListSelect = {
   updatedAt: true,
   ...ownerRobotSelect,
 } as const;
+
+/**
+ * One page of a list, plus what the client needs to draw the pager. The scope
+ * is what makes a list the gallery or the caller's own; everything else — the
+ * filters, the sort, the paging — is the same query either way.
+ */
+async function listAnimations(
+  ctx: Context,
+  input: z.infer<typeof listInputSchema>,
+  scope: ListScope,
+) {
+  const where = listWhere({ ...scope, search: input.search });
+  const total = await ctx.db.animation.count({ where });
+  const { page, pageCount, skip, take } = pageWindow({
+    page: input.page,
+    perPage: input.perPage,
+    total,
+  });
+  const items = await ctx.db.animation.findMany({
+    where,
+    select: animationListSelect,
+    orderBy: listOrderBy(input.sort),
+    skip,
+    take,
+  });
+  return { items, page, pageCount, perPage: input.perPage, total };
+}
 
 /** Reads return NOT_FOUND (not FORBIDDEN) so private ids don't leak existence. */
 async function getVisibleAnimation(ctx: Context, id: string) {
@@ -191,50 +225,26 @@ const robotsRouter = router({
 
 const animationsRouter = router({
   gallery: publicProcedure
-    .input(
-      z
-        .object({
-          robotSlug: z.string().optional(),
-          cursor: z.string().uuid().optional(),
-          limit: z.number().int().min(1).max(100).default(50),
-        })
-        .default({ limit: 50 }),
-    )
-    .query(async ({ ctx, input }) => {
-      const items = await ctx.db.animation.findMany({
-        where: {
-          visibility: "public",
-          ...(input.robotSlug ? { robot: { slug: input.robotSlug } } : {}),
-        },
-        select: animationListSelect,
-        // id tiebreaker: createdAt ties would otherwise make cursor resumption
-        // nondeterministic (rows skipped or repeated across pages)
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: input.limit + 1,
-        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
-      });
-      // cursor + skip:1 resumes *after* the cursor row, so it must be the last
-      // row we return — anchoring on the popped row would drop it entirely
-      let nextCursor: string | undefined;
-      if (items.length > input.limit) {
-        items.pop();
-        nextCursor = items[items.length - 1]!.id;
-      }
-      return { items, nextCursor };
-    }),
+    .input(listInputSchema.default({}))
+    .query(({ ctx, input }) =>
+      listAnimations(ctx, input, { visibility: "public", robotSlug: input.robotSlug }),
+    ),
 
-  mine: authedProcedure.query(({ ctx }) =>
-    ctx.db.animation.findMany({
-      where: { ownerId: ctx.dbUser.id },
-      select: animationListSelect,
-      orderBy: { createdAt: "desc" },
-    }),
-  ),
+  mine: authedProcedure
+    .input(listInputSchema.extend({ visibility: z.enum(VISIBILITIES).optional() }).default({}))
+    .query(({ ctx, input }) =>
+      listAnimations(ctx, input, {
+        ownerId: ctx.dbUser.id,
+        visibility: input.visibility,
+        robotSlug: input.robotSlug,
+      }),
+    ),
 
   /**
    * How much of the cap is used — so a page can disable "New animation" and
    * "Remix" rather than let a user author something the save will refuse.
-   * `/my` has the count already in its list and does not need this.
+   * `/my` needs it too now that its list is one filtered page rather than
+   * everything the user owns.
    */
   quota: authedProcedure.query(async ({ ctx }) => ({
     count: await ownedAnimationCount(ctx, ctx.dbUser.id),
