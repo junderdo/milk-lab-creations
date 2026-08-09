@@ -81,26 +81,28 @@
     <header class="space-y-1">
       <div class="flex items-start justify-between gap-4">
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{animation.name}</h1>
-        {#if data.me?.id === animation.ownerId}
-          <!-- the way into the editor; non-owners get Remix instead -->
-          <a
-            href={resolve("/animations/[id]/edit", { id: animation.id })}
-            class="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            Edit
-          </a>
-        {/if}
-        {#if data.me}
-          <button
-            type="button"
-            onclick={remix}
-            disabled={remixing || atCap}
-            title={atCap ? ANIMATION_CAP_MESSAGE : undefined}
-            class="shrink-0 rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
-          >
-            {remixing ? "Remixing…" : "Remix"}
-          </button>
-        {/if}
+        <div class="flex shrink-0 items-center gap-2">
+          {#if data.me?.id === animation.ownerId}
+            <!-- the way into the editor; non-owners get Remix instead -->
+            <a
+              href={resolve("/animations/[id]/edit", { id: animation.id })}
+              class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Edit
+            </a>
+          {/if}
+          {#if data.me}
+            <button
+              type="button"
+              onclick={remix}
+              disabled={remixing || atCap}
+              title={atCap ? ANIMATION_CAP_MESSAGE : undefined}
+              class="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+            >
+              {remixing ? "Remixing…" : "Remix"}
+            </button>
+          {/if}
+        </div>
       </div>
       <p class="text-sm text-gray-600 dark:text-gray-400">
         by {animation.owner?.displayName ?? "unknown"} · {animation.robot?.name} ·
