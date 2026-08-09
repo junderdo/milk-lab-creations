@@ -97,18 +97,51 @@ Used by `/wayfinder`. The **map** is a card with one **child** card per ticket.
   exists when the card that lists it is created. That collapses wayfinder's create-then-wire two-pass
   into one pass, since `## Blocked by` is written at create time.
 - **Resolve**: `trello card:comment` the answer onto the card, move it to **Done**, then append a
-  context pointer (gist + card URL) to the map card's Decisions-so-far.
+  context pointer (gist + card URL) to the map card's Decisions-so-far. A full resolution usually
+  exceeds the 414 ceiling — see Gotchas for measuring it and splitting across ordered comments.
 
 ## Gotchas
 
 - **`--list` must be the card's *current* list.** After a `card:move`, later commands need the new
   list name. Commands that take a card ID (`card:get-by-id`) sidestep this.
-- **Long descriptions fail with a 414.** The CLI puts `--description` in the request URL, so
-  `card:create` and `card:update` reject bodies past roughly **6 KB** with
-  `AxiosError: Request failed with status code 414`. Long card titles and board names eat into the
-  same budget. Keep a map card's body an index — gists plus links — and let detail live in the
-  child cards and in resolution comments. `card:comment --text` is not affected; comments of ~8 KB
-  post fine.
+- **Long text fails with a 414, and the budget is measured *URL-encoded*.** The CLI puts text in the
+  request URL, so `card:create`, `card:update` **and `card:comment`** all reject long bodies with
+  `AxiosError: Request failed with status code 414`. Measured on this board: **~10,400 encoded
+  characters succeeds, ~10,700 fails.** Long card titles and board names eat into the same budget.
+
+  Raw byte count is a misleading proxy, because every non-ASCII character costs 3× — an em-dash (`—`)
+  is 9 encoded characters against 1 for a hyphen, so 30-odd em-dashes alone are ~250 characters of
+  budget. Before a long write, measure the real number:
+
+  ```bash
+  python3 -c "import urllib.parse,sys;s=open('body.md').read();print(len(urllib.parse.quote(s)))"
+  ```
+
+  Practical rules:
+
+  - Pass long bodies from a file (`--description "$(cat body.md)"`) so you can measure and edit them.
+  - **Prefer ASCII punctuation** in card bodies — `-` over `—`/`–`, `->` over `→`. Cheapest win
+    available, and worth doing pre-emptively on anything long.
+  - Keep a map card's body an **index** — gists plus links — with detail in child cards and comments.
+    A map that has accumulated many decisions will sit near the ceiling, so **budget for it**: pay for
+    a new Decisions-so-far entry by tightening older gists, whose detail is already in their tickets.
+  - **Split long resolutions across several comments** ("part 1 of 2", …), as the animation-store
+    cards do. Post them **in order**: comments render newest-first, and a failed part you re-split and
+    re-post lands *after* the parts that already succeeded.
+  - **There is no way to delete or edit a comment from the CLI** (`card:comment` and `card:comments`
+    are the only comment verbs), so a mis-posted comment is permanent. Measure before posting.
+- **`--format json` names the body `description`, not `desc`.** The Trello REST API calls this field
+  `desc`, so reaching for `d['desc']` is the natural mistake and yields a bare `KeyError`. To pull a
+  card's body for editing:
+
+  ```bash
+  trello card:get-by-id --id <card-id> --format json \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['description'],end='')" > body.md
+  ```
+
+- **Mutations succeed silently.** `card:move`, `card:update`, `card:assign` and `card:label` print
+  **nothing** on success — indistinguishable from a no-op. Confirm with a `card:get-by-id` or a
+  `card:list` of the destination list rather than assuming the write landed.
 - **Duplicate label names exist on this board** (`wayfinder:task`, `wayfinder:prototype`, and
   `wayfinder:grilling` each exist in two colors). Lookup by name may hit either. Run
   `trello label:list --board "Milk Lab Creations"` before assuming, and prefer the color already in
