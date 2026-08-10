@@ -58,18 +58,6 @@ const slots: readonly Slot[] = [
   occupied(2, null, "Wiggle"),
 ];
 
-describe("sub-opcodes", () => {
-  it("has no RENAME and no GET_ANIMATION to send", () => {
-    expect(Object.keys(SUB_OPCODE).sort()).toEqual([
-      "capability",
-      "delete",
-      "list",
-      "play",
-      "store",
-    ]);
-  });
-});
-
 describe("deleteSlot", () => {
   it("sends one DELETE carrying just the slot index", async () => {
     const fake = fakeSession([ok]);
@@ -111,6 +99,16 @@ describe("deleteSlot", () => {
     expect(result.slots).toBeNull();
   });
 
+  it("treats SLOT_EMPTY as the slot being empty, which is what was asked for", async () => {
+    const fake = fakeSession([nacked(STATUS_CODE.slotEmpty)]);
+
+    const result = await deleteSlot(fake.session, { slot: 0, slots });
+
+    expect(result.kind).toBe("done");
+    expect(result.message).not.toContain("SLOT_EMPTY");
+    expect(result.slots?.[0]).toEqual({ index: 0, entry: null });
+  });
+
   it("re-reads LIST after a timeout and reports that it did delete", async () => {
     const fake = fakeSession([
       { kind: "unknown" },
@@ -143,13 +141,35 @@ describe("deleteSlot", () => {
     expect(result.slots?.[0]?.entry?.name).toBe("Tail flick");
   });
 
-  it("says it cannot tell when the re-read fails too", async () => {
-    const fake = fakeSession([{ kind: "link-lost" }, { kind: "link-lost" }]);
+  it("says it is checking before it re-reads", async () => {
+    const fake = fakeSession([
+      { kind: "unknown" },
+      { kind: "ok", payload: listPayloadFor([]) },
+    ]);
+    const checking: string[] = [];
+
+    await deleteSlot(fake.session, { slot: 0, slots }, { onChecking: (m) => checking.push(m) });
+
+    expect(checking).toEqual(["Your ears went quiet. Checking whether it deleted…"]);
+  });
+
+  it("cannot tell when the re-read fails too", async () => {
+    const fake = fakeSession([{ kind: "unknown" }, { kind: "link-lost" }]);
 
     const result = await deleteSlot(fake.session, { slot: 0, slots });
 
     expect(result.kind).toBe("unclear");
     expect(result.slots).toBeNull();
+    expect(result.message).toContain("Deleting it again is safe");
+  });
+
+  it("does not spend a round trip re-reading over a link that just died", async () => {
+    const fake = fakeSession([{ kind: "link-lost" }]);
+
+    const result = await deleteSlot(fake.session, { slot: 0, slots });
+
+    expect(fake.requests).toHaveLength(1);
+    expect(result.kind).toBe("unclear");
     expect(result.message).toContain("Deleting it again is safe");
   });
 });

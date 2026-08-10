@@ -19,7 +19,12 @@
   import { ears } from "$lib/ears/connection.svelte";
   import type { Capability, Slot } from "$lib/ears/protocol";
   import { dialogView } from "$lib/ears/send-dialog";
-  import { deleteSlot, playSlot, type SlotActionResult } from "$lib/ears/slot-actions";
+  import {
+    deleteSlot,
+    playSlot,
+    type SlotAction,
+    type SlotActionResult,
+  } from "$lib/ears/slot-actions";
   import { occupantName, slotNumber } from "$lib/ears/slot-copy";
   import { MAX_SLOT_NAME_BYTES, truncateToBytes } from "$lib/ears/store";
   import { defaultSlot, sendToSlot, type UploadResult } from "$lib/ears/upload";
@@ -71,7 +76,7 @@
   } as const;
 
   /** Everything the dialog learns about the slots lands in both places at once. */
-  function adopt(deviceId: string, learnt: readonly Slot[] | null): void {
+  function rememberSlots(deviceId: string, learnt: readonly Slot[] | null): void {
     if (learnt === null) return;
     slots = learnt;
     ears.updateSlots(deviceId, learnt);
@@ -100,25 +105,31 @@
     );
 
     // the grid here and the count on the header chip are the same fact
-    adopt(session.deviceId, outcome.slots);
+    rememberSlots(session.deviceId, outcome.slots);
     result = outcome;
     checking = null;
     sending = false;
   }
 
-  async function manage(
-    slot: number,
-    action: typeof deleteSlot | typeof playSlot,
-  ): Promise<void> {
+  /**
+   * The waiting state here is about the request, not about the ears moving: it
+   * stops when the response lands, which is a moment that truthfully exists.
+   */
+  async function manage(slot: number, action: SlotAction): Promise<void> {
     const session = ears.session;
     if (session === undefined || busy) return;
 
     managing = true;
     result = null;
+    checking = null;
 
-    const outcome = await action(session, { slot, slots });
-    adopt(session.deviceId, outcome.slots);
+    const outcome = await action(session, { slot, slots }, {
+      onChecking: (message) => (checking = message),
+    });
+
+    rememberSlots(session.deviceId, outcome.slots);
     result = outcome;
+    checking = null;
     managing = false;
   }
 </script>
@@ -146,7 +157,7 @@
           {@const chosen = slot.index === target}
           {@const occupant = occupantName(slot)}
           <div
-            class="relative flex flex-col overflow-hidden rounded-md border {chosen
+            class="flex flex-col overflow-hidden rounded-md border {chosen
               ? 'border-gray-900 bg-gray-100 dark:border-white dark:bg-gray-800'
               : 'border-gray-300 dark:border-gray-700'}"
           >
@@ -166,36 +177,42 @@
               </span>
             </button>
 
+            <!-- under the slot's own label, above its actions: the bar belongs to
+                 the thing being written, not to the buttons that manage it -->
+            {#if chosen && frameCount > 0}
+              <span class="block h-1 bg-gray-200 dark:bg-gray-700">
+                <span
+                  class="block h-full bg-emerald-500"
+                  style="width: {(framesSent / frameCount) * 100}%"
+                ></span>
+              </span>
+            {/if}
+
             {#if slot.entry !== null}
-              <div class="flex divide-x divide-gray-300 border-t border-gray-300 dark:divide-gray-700 dark:border-gray-700">
+              {@const playLabel = `Play “${occupant}” on your ears`}
+              {@const deleteLabel = `Delete “${occupant}” from slot ${slotNumber(slot.index)}`}
+              <div
+                class="flex divide-x divide-gray-300 border-t border-gray-300 dark:divide-gray-700 dark:border-gray-700"
+              >
                 <button
                   type="button"
                   onclick={() => manage(slot.index, playSlot)}
-                  title="Play “{occupant}” on your ears"
+                  title={playLabel}
                   class="flex grow justify-center p-1.5 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:bg-gray-800"
                 >
                   <Play class="size-3.5" aria-hidden="true" />
-                  <span class="sr-only">Play “{occupant}” on your ears</span>
+                  <span class="sr-only">{playLabel}</span>
                 </button>
                 <button
                   type="button"
                   onclick={() => manage(slot.index, deleteSlot)}
-                  title="Delete “{occupant}” from slot {slotNumber(slot.index)}"
+                  title={deleteLabel}
                   class="flex grow justify-center p-1.5 text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:bg-red-950 dark:hover:text-red-400"
                 >
                   <Trash2 class="size-3.5" aria-hidden="true" />
-                  <span class="sr-only">
-                    Delete “{occupant}” from slot {slotNumber(slot.index)}
-                  </span>
+                  <span class="sr-only">{deleteLabel}</span>
                 </button>
               </div>
-            {/if}
-
-            {#if chosen && frameCount > 0}
-              <span
-                class="absolute inset-x-0 bottom-0 block h-1 bg-emerald-500"
-                style="width: {(framesSent / frameCount) * 100}%"
-              ></span>
             {/if}
           </div>
         {/each}
@@ -225,13 +242,15 @@
       <p class="text-sm text-amber-700 dark:text-amber-400">{view.overwriteWarning}</p>
     {/if}
 
-    {#if sending}
+    {#if busy}
       <p class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
         <LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
         {#if checking}
           {checking}
-        {:else}
+        {:else if sending}
           {frameCount > 0 ? `Frame ${framesSent} of ${frameCount}…` : "Sending…"}
+        {:else}
+          Asking your ears…
         {/if}
       </p>
     {/if}
@@ -247,7 +266,7 @@
         disabled={busy}
         class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
       >
-        {result?.kind === "stored" || result?.kind === "done" ? "Done" : "Cancel"}
+        {result?.kind === "stored" ? "Done" : "Cancel"}
       </button>
       <button
         type="button"

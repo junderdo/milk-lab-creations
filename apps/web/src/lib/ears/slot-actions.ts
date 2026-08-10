@@ -2,10 +2,10 @@
  * Freeing a slot and trying what is in one, from the same grid that fills them.
  *
  * Two rules from `docs/adr/0001-web-app-connect-and-upload-ux.md` shape this
- * module. `DELETE` is idempotent on the device, so an unknown outcome resolves
- * by asking rather than by reasoning, and saying "delete it again" is always
- * safe advice. And `PLAY` answers `OK` on acceptance, not on completion — there
- * is no duration on the wire, so nothing here reports an in-flight play.
+ * module. `DELETE` is idempotent on the device, so "delete it again" is always
+ * safe advice and an unknown outcome never needs a guess. And `PLAY` answers
+ * `OK` on acceptance, not on completion — there is no duration on the wire, so
+ * nothing here reports an in-flight play.
  *
  * `SLOT_EMPTY` and `SLOT_OUT_OF_RANGE` on a play mean one thing only: the
  * cached list is stale. They are handled as news about the store, not as a
@@ -41,77 +41,103 @@ export interface SlotActionRequest {
   readonly slots: readonly Slot[];
 }
 
-const WENT_QUIET = "Your ears went quiet.";
-const DISCONNECTED = "Your ears disconnected.";
+export interface SlotActionHooks {
+  /** The request ended without an answer and the re-read has begun. */
+  onChecking?(message: string): void;
+}
 
-export async function deleteSlot(
+/** What the dialog's grid buttons invoke; `deleteSlot` and `playSlot` both fit. */
+export type SlotAction = (
   session: EarsSession,
   request: SlotActionRequest,
-): Promise<SlotActionResult> {
+  hooks?: SlotActionHooks,
+) => Promise<SlotActionResult>;
+
+const WENT_QUIET = "Your ears went quiet.";
+const DISCONNECTED = "Your ears disconnected.";
+const DELETE_AGAIN = "Deleting it again is safe — your ears take a second delete the same way.";
+
+export const deleteSlot: SlotAction = async (session, request, hooks = {}) => {
   const outcome = await session.request(SUB_OPCODE.delete, slotPayload(request.slot));
 
   switch (outcome.kind) {
+    // the device answers OK to a delete of an empty slot, and SLOT_EMPTY would
+    // say the same thing: the slot the user wanted emptied is empty
     case "ok":
-      return {
-        kind: "done",
-        message: `Slot ${slotNumber(request.slot)} is empty now.`,
-        slots: withCleared(request),
-      };
+      return emptied(request);
     case "failed":
-      return { kind: "failed", message: statusText(outcome.status), slots: null };
+      return outcome.status.code === STATUS_CODE.slotEmpty
+        ? emptied(request)
+        : { kind: "failed", message: statusText(outcome.status), slots: null };
     case "unknown":
-      return await checkWhetherItCleared(session, request, WENT_QUIET);
+      return await checkWhetherItCleared(session, request, hooks);
+    // a re-read over a link that just died can only fail, so the round trip is
+    // skipped and the idempotency is the answer instead
     case "link-lost":
-      return await checkWhetherItCleared(session, request, DISCONNECTED);
+      return {
+        kind: "unclear",
+        message: `${DISCONNECTED} This app can't tell whether ${where(request.slot)} was emptied. ${DELETE_AGAIN}`,
+        slots: null,
+      };
     default: {
       const unhandled: never = outcome;
       throw new Error(`unhandled outcome: ${String(unhandled)}`);
     }
   }
+};
+
+function emptied(request: SlotActionRequest): SlotActionResult {
+  return {
+    kind: "done",
+    message: `Slot ${slotNumber(request.slot)} is empty now.`,
+    slots: withCleared(request),
+  };
 }
 
 async function checkWhetherItCleared(
   session: EarsSession,
   request: SlotActionRequest,
-  opening: string,
+  hooks: SlotActionHooks,
 ): Promise<SlotActionResult> {
-  const where = `slot ${slotNumber(request.slot)}`;
-  const retry = "Deleting it again is safe — your ears take a second delete the same way.";
+  hooks.onChecking?.(`${WENT_QUIET} Checking whether it deleted…`);
 
   const reread = await readSlots(session, request.slots.length);
   if (reread.ok === false) {
     return {
       kind: "unclear",
-      message: `${opening} This app couldn't re-read their slots either, so it can't tell whether ${where} was emptied. ${retry}`,
+      message: `${WENT_QUIET} This app couldn't re-read their slots either, so it can't tell whether ${where(request.slot)} was emptied. ${DELETE_AGAIN}`,
       slots: null,
     };
   }
 
   const after = reread.slots.find((slot) => slot.index === request.slot);
-  return after?.entry == null
+  if (after === undefined) {
+    return {
+      kind: "unclear",
+      message: `${WENT_QUIET} Their slot list came back without ${where(request.slot)}, so this app can't tell whether it was emptied. ${DELETE_AGAIN}`,
+      slots: reread.slots,
+    };
+  }
+
+  return after.entry === null
     ? {
         kind: "done",
-        message: `${opening} It did delete — ${where} is empty now.`,
+        message: `${WENT_QUIET} It did delete — ${where(request.slot)} is empty now.`,
         slots: reread.slots,
       }
     : {
         kind: "failed",
-        message: `${opening} It didn't delete — ${where} still holds “${occupantName(after)}”. ${retry}`,
+        message: `${WENT_QUIET} It didn't delete — ${where(request.slot)} still holds “${occupantName(after)}”. ${DELETE_AGAIN}`,
         slots: reread.slots,
       };
 }
 
-export async function playSlot(
-  session: EarsSession,
-  request: SlotActionRequest,
-): Promise<SlotActionResult> {
+export const playSlot: SlotAction = async (session, request) => {
   const playing = nameInSlot(request);
   const outcome = await session.request(SUB_OPCODE.play, slotPayload(request.slot));
 
   switch (outcome.kind) {
     case "ok":
-      // no in-flight state to render and none rendered: OK means the ears took
-      // the command, and there is no completion event to wait for
       return { kind: "done", message: `Your ears are playing “${playing}”.`, slots: null };
     case "failed":
       return isStale(outcome.status.code)
@@ -134,7 +160,7 @@ export async function playSlot(
       throw new Error(`unhandled outcome: ${String(unhandled)}`);
     }
   }
-}
+};
 
 function isStale(code: number): boolean {
   return code === STATUS_CODE.slotEmpty || code === STATUS_CODE.slotOutOfRange;
@@ -154,7 +180,11 @@ async function reportGone(
 
   const reread = await readSlots(session, request.slots.length);
   return reread.ok
-    ? { kind: "stale", message: `${gone} The grid now shows what they're holding.`, slots: reread.slots }
+    ? {
+        kind: "stale",
+        message: `${gone} The grid now shows what they're holding.`,
+        slots: reread.slots,
+      }
     : {
         kind: "stale",
         message: `${gone} This app couldn't re-read their slots either; reconnect to see what they're holding.`,
@@ -166,9 +196,13 @@ function slotPayload(slot: number): Uint8Array {
   return new Uint8Array([slot]);
 }
 
+function where(slot: number): string {
+  return `slot ${slotNumber(slot)}`;
+}
+
 function nameInSlot({ slot, slots }: SlotActionRequest): string {
   const cached = slots.find((each) => each.index === slot);
-  return cached?.entry == null ? `slot ${slotNumber(slot)}` : occupantName(cached);
+  return cached === undefined || cached.entry === null ? where(slot) : occupantName(cached);
 }
 
 function withCleared({ slot, slots }: SlotActionRequest): Slot[] {
