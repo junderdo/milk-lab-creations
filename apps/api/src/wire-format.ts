@@ -5,7 +5,8 @@
 // library to do it. Same precedent as limits.ts. Nothing here imports anything.
 //
 // Must stay bit-compatible with custom_animation_serialize() in
-// github.com/junderdo/robo-cat-ears.
+// github.com/junderdo/robo-cat-ears. Both are tested against the golden bytes in
+// docs/spec/wire-format-fixture.json — see docs/spec/wire-format-fixture.md.
 
 /** The structural core of `AnimationPayload`, restated to keep this zod-free. */
 export interface WireKeyframe {
