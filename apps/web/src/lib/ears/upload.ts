@@ -13,7 +13,8 @@
 import { readSlots } from "./connect";
 import { SUB_OPCODE, type Slot } from "./protocol";
 import type { EarsSession } from "./session";
-import { buildStorePayload, frameCount } from "./store";
+import { slotNumber } from "./slot-copy";
+import { buildStorePayload } from "./store";
 import { statusText } from "./status";
 
 /**
@@ -53,12 +54,17 @@ export interface UploadResult {
   readonly slots: readonly Slot[] | null;
 }
 
-export type UploadProgress = (framesSent: number, frameCount: number) => void;
+export interface UploadHooks {
+  /** Each frame as it lands, against the count the session actually sent. */
+  onProgress?(framesSent: number, frameCount: number): void;
+  /** The transfer ended without an answer and the re-read has begun. */
+  onChecking?(message: string): void;
+}
 
 export async function sendToSlot(
   session: EarsSession,
   request: UploadRequest,
-  onProgress?: UploadProgress,
+  hooks: UploadHooks = {},
 ): Promise<UploadResult> {
   const payload = buildStorePayload(request);
   if (payload === undefined) {
@@ -69,29 +75,26 @@ export async function sendToSlot(
     };
   }
 
-  const total = frameCount(payload.length, session.maxChunkBytes);
   const outcome = await session.request(SUB_OPCODE.store, payload, {
-    onProgress: (sent) => onProgress?.(sent, total),
+    onProgress: hooks.onProgress,
   });
 
   switch (outcome.kind) {
     case "ok":
       return {
         kind: "stored",
-        message: `Saved to slot ${request.slot + 1} as "${request.name}".`,
+        message: `Saved to slot ${slotNumber(request.slot)} as “${request.name}”.`,
         slots: withStored(request),
       };
     case "failed":
       return { kind: "not-stored", message: statusText(outcome.status), slots: null };
-    case "link-lost":
-      return {
-        kind: "unclear",
-        message:
-          "Your ears disconnected mid-transfer, so this app can't tell whether it saved. Reconnect to see.",
-        slots: null,
-      };
+    // both of these are unknown outcomes, and both get the same treatment: ask
+    // the ears rather than guess. A dead link makes the re-read fail fast, and
+    // "this app can't tell" is still the honest answer rather than "it failed"
     case "unknown":
-      return await checkWhetherItSaved(session, request);
+      return await checkWhetherItSaved(session, request, WENT_QUIET, hooks);
+    case "link-lost":
+      return await checkWhetherItSaved(session, request, DISCONNECTED, hooks);
     default: {
       const unhandled: never = outcome;
       throw new Error(`unhandled outcome: ${String(unhandled)}`);
@@ -100,32 +103,53 @@ export async function sendToSlot(
 }
 
 const WENT_QUIET = "Your ears went quiet.";
+const DISCONNECTED = "Your ears disconnected mid-transfer.";
 
 async function checkWhetherItSaved(
   session: EarsSession,
   request: UploadRequest,
+  opening: string,
+  hooks: UploadHooks,
 ): Promise<UploadResult> {
+  hooks.onChecking?.(`${opening} Checking whether it saved…`);
+
+  const where = `slot ${slotNumber(request.slot)}`;
   const reread = await readSlots(session, request.slots.length);
   if (reread.ok === false) {
     return {
       kind: "unclear",
-      message: `${WENT_QUIET} This app couldn't re-read their slots either, so it can't tell whether it saved. Reconnect to see.`,
+      message: `${opening} This app couldn't re-read their slots either, so it can't tell whether it saved. Nothing was retried — reconnect to see.`,
       slots: null,
     };
   }
 
-  const target = reread.slots.find((slot) => slot.index === request.slot);
-  return target?.entry?.animationId === request.animationId
+  const after = reread.slots.find((slot) => slot.index === request.slot);
+  if (!holdsWhatWeSent(after, request)) {
+    return {
+      kind: "not-stored",
+      message: `${opening} It didn't save — ${where} is unchanged. Nothing was retried, so send it again when you're ready.`,
+      slots: reread.slots,
+    };
+  }
+
+  // the default target is the slot already holding this animation, so finding
+  // it there proves nothing unless it was not already there under this name
+  const before = request.slots.find((slot) => slot.index === request.slot);
+  return holdsWhatWeSent(before, request)
     ? {
-        kind: "stored",
-        message: `${WENT_QUIET} It did save — slot ${request.slot + 1} is holding "${target.entry.name}".`,
+        kind: "unclear",
+        message: `${opening} ${where} was already holding this animation under that name, so this app can't tell whether this version landed. Nothing was retried — send it again to be sure.`,
         slots: reread.slots,
       }
     : {
-        kind: "not-stored",
-        message: `${WENT_QUIET} It didn't save — slot ${request.slot + 1} is unchanged. Nothing was retried, so send it again when you're ready.`,
+        kind: "stored",
+        message: `${opening} It did save — ${where} is holding “${request.name}”.`,
         slots: reread.slots,
       };
+}
+
+function holdsWhatWeSent(slot: Slot | undefined, request: UploadRequest): boolean {
+  return slot?.entry?.animationId === request.animationId && slot.entry.name === request.name;
 }
 
 /**

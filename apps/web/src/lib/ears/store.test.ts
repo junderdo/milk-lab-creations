@@ -3,7 +3,6 @@ import {
   MAX_SLOT_NAME_BYTES,
   animationIdBytes,
   buildStorePayload,
-  frameCount,
   truncateToBytes,
   utf8ByteLength,
 } from "./store";
@@ -115,23 +114,5 @@ describe("buildStorePayload", () => {
         wire: new Uint8Array([0]),
       }),
     ).toBeUndefined();
-  });
-});
-
-describe("frameCount", () => {
-  it("counts frames against the payload bytes each frame carries", () => {
-    // 20 - 5 header = 15 payload bytes per frame
-    expect(frameCount(15, 20)).toBe(1);
-    expect(frameCount(16, 20)).toBe(2);
-    expect(frameCount(30, 20)).toBe(2);
-  });
-
-  it("is one frame for an empty payload, never zero", () => {
-    expect(frameCount(0, 20)).toBe(1);
-  });
-
-  it("is two frames for a worst-case store at a 512-byte chunk", () => {
-    // slot(1) + id(16) + name_len(1) + name(32) + wire(769) = 819
-    expect(frameCount(819, 512)).toBe(2);
   });
 });

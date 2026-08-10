@@ -113,7 +113,9 @@ describe("sendToSlot", () => {
     const fake = fakeSession([{ kind: "ok", payload: new Uint8Array(0) }]);
     const progress: [number, number][] = [];
 
-    await sendToSlot(fake.session, request(0), (sent, total) => progress.push([sent, total]));
+    await sendToSlot(fake.session, request(0), {
+      onProgress: (sent, total) => progress.push([sent, total]),
+    });
 
     expect(progress).toEqual([[1, 1]]);
   });
@@ -198,13 +200,76 @@ describe("sendToSlot", () => {
     expect(result.slots).toBeNull();
   });
 
-  it("reports a lost link without pretending to know the outcome", async () => {
-    const fake = fakeSession([{ kind: "link-lost" }]);
+  it("announces the check before it runs, so a slow re-read is not a hang", async () => {
+    const fake = fakeSession([{ kind: "unknown" }, { kind: "ok", payload: listPayloadFor([]) }]);
+    const announced: string[] = [];
+
+    await sendToSlot(fake.session, request(3), { onChecking: (m) => announced.push(m) });
+
+    expect(announced).toHaveLength(1);
+    expect(announced[0]).toContain("went quiet");
+    expect(announced[0]).toContain("Checking whether it saved");
+  });
+
+  it("puts a lost link through the same check rather than calling it a failure", async () => {
+    const fake = fakeSession([
+      { kind: "link-lost" },
+      { kind: "ok", payload: listPayloadFor([{ index: 1, id: ANIMATION_ID, name: "Tail flick" }]) },
+    ]);
+    const announced: string[] = [];
+
+    const result = await sendToSlot(fake.session, request(1), {
+      onChecking: (m) => announced.push(m),
+    });
+
+    expect(announced[0]).toContain("disconnected");
+    expect(fake.requests.map((r) => r.subOpcode)).toEqual([SUB_OPCODE.store, SUB_OPCODE.list]);
+    expect(result.kind).toBe("stored");
+  });
+
+  it("reports a lost link it cannot check as unknown, never as a failure", async () => {
+    const fake = fakeSession([{ kind: "link-lost" }, { kind: "link-lost" }]);
 
     const result = await sendToSlot(fake.session, request(1));
 
     expect(result.kind).toBe("unclear");
     expect(result.message).toContain("disconnected");
+  });
+
+  it("will not claim success when the slot already held this animation under that name", async () => {
+    const before = buildSlots(4, [{ index: 3, animationId: ANIMATION_ID, name: "Tail flick" }]);
+    const fake = fakeSession([
+      { kind: "unknown" },
+      { kind: "ok", payload: listPayloadFor([{ index: 3, id: ANIMATION_ID, name: "Tail flick" }]) },
+    ]);
+
+    const result = await sendToSlot(fake.session, request(3, before));
+
+    expect(result.kind).toBe("unclear");
+    expect(result.message).toContain("can't tell");
+  });
+
+  it("does claim success when the re-read shows the new name in place", async () => {
+    const before = buildSlots(4, [{ index: 3, animationId: ANIMATION_ID, name: "Old name" }]);
+    const fake = fakeSession([
+      { kind: "unknown" },
+      { kind: "ok", payload: listPayloadFor([{ index: 3, id: ANIMATION_ID, name: "Tail flick" }]) },
+    ]);
+
+    const result = await sendToSlot(fake.session, request(3, before));
+
+    expect(result.kind).toBe("stored");
+  });
+
+  it("counts a slot holding the right id under the wrong name as not saved", async () => {
+    const fake = fakeSession([
+      { kind: "unknown" },
+      { kind: "ok", payload: listPayloadFor([{ index: 3, id: ANIMATION_ID, name: "Old name" }]) },
+    ]);
+
+    const result = await sendToSlot(fake.session, request(3));
+
+    expect(result.kind).toBe("not-stored");
   });
 
   it("refuses to send a request it cannot build rather than guessing", async () => {

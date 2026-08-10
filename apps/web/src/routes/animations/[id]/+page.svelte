@@ -10,6 +10,7 @@
   import { trpc } from "$lib/trpc";
   import { ears } from "$lib/ears/connection.svelte";
   import { sendEligibility } from "$lib/ears/eligibility";
+  import type { Capability, Slot } from "$lib/ears/protocol";
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
   import EarsSendDialog from "$lib/components/ears-send-dialog/EarsSendDialog.svelte";
@@ -67,7 +68,23 @@
       readableKeyframeCount: keyframes.length,
     }),
   );
-  let sending = $state(false);
+  // Captured when the dialog opens rather than read live, so powering the ears
+  // off mid-transfer cannot unmount the dialog that is about to report what
+  // happened — the report is the whole point of that moment.
+  let sendTarget = $state<{
+    deviceName: string;
+    capability: Capability;
+    slots: readonly Slot[];
+  } | null>(null);
+
+  function openSendDialog(): void {
+    if (earsState.status !== "connected") return;
+    sendTarget = {
+      deviceName: earsState.deviceName,
+      capability: earsState.capability,
+      slots: earsState.slots,
+    };
+  }
 
   // Eager fork: the copy happens server-side on click and we land in the editor
   // on it — remixing is a way of starting to create, not a way of collecting.
@@ -104,7 +121,7 @@
           {#if browser}
             <button
               type="button"
-              onclick={() => (sending = true)}
+              onclick={openSendDialog}
               disabled={!sendVerdict.canSend}
               class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
             >
@@ -190,14 +207,14 @@
   </div>
 </main>
 
-{#if sending && earsState.status === "connected"}
+{#if sendTarget}
   <EarsSendDialog
     animationId={animation.id}
     animationName={animation.name}
     {keyframes}
-    deviceName={earsState.deviceName}
-    capability={earsState.capability}
-    slots={earsState.slots}
-    onclose={() => (sending = false)}
+    deviceName={sendTarget.deviceName}
+    capability={sendTarget.capability}
+    slots={sendTarget.slots}
+    onclose={() => (sendTarget = null)}
   />
 {/if}

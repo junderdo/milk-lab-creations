@@ -8,8 +8,6 @@
  * and the ears answer `INVALID_NAME` to it.
  */
 
-import { FRAME_HEADER_BYTES } from "./protocol";
-
 /** What `STORE` accepts for a name; 1-32 bytes of well-formed UTF-8. */
 export const MAX_SLOT_NAME_BYTES = 32;
 
@@ -84,14 +82,4 @@ export function buildStorePayload({
   payload.set(nameBytes, 2 + ANIMATION_ID_BYTES);
   payload.set(wire, 2 + ANIMATION_ID_BYTES + nameBytes.length);
   return payload;
-}
-
-/**
- * How many frames a payload of this size takes, given the link's
- * `max_chunk_bytes` — the real count progress is reported against, never a
- * guess. A payload-less request is one frame, not zero.
- */
-export function frameCount(payloadBytes: number, maxChunkBytes: number): number {
-  const perFrame = maxChunkBytes - FRAME_HEADER_BYTES;
-  return Math.max(1, Math.ceil(payloadBytes / perFrame));
 }

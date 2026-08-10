@@ -1,15 +1,11 @@
 /**
  * Whether "Send to my ears" can do anything yet, and the sentence to render
- * when it cannot.
+ * when it cannot — the button stays visible and disabled, because a missing
+ * button is a mystery and a whole chunked transfer to learn `TOO_LARGE` is a
+ * worse answer than the specific number.
  *
- * The button is visible but disabled with the reason as page text — not hidden,
- * and not attempted-and-nacked. A missing button is a mystery; a tooltip never
- * opens on a touch device; and spending a whole chunked transfer to be told
- * `TOO_LARGE` is a worse answer than the specific number.
- *
- * The limits checked here (`max_keyframes`, the robot) are fixed by protocol
- * version 1 and deliberately absent from the wire. They are **UX only, never a
- * trust boundary** — the ears validate identically whatever this says.
+ * These limits are UX only, never a trust boundary: the ears validate
+ * identically whatever this says.
  */
 
 import { ROBOT_PROFILES } from "@milklab/api/limits";

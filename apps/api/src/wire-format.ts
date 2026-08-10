@@ -1,18 +1,13 @@
 // The binary form an animation takes on the wire — the one place it is written.
 //
 // Split out from payload.ts, which builds the zod schemas around it, because the
-// web app packs animations in the browser before sending them to a pair of ears
-// and should not ship a validation library to do it. Same precedent as
-// limits.ts. Nothing here imports anything.
+// web app packs animations in the browser and should not ship a validation
+// library to do it. Same precedent as limits.ts. Nothing here imports anything.
 //
 // Must stay bit-compatible with custom_animation_serialize() in
 // github.com/junderdo/robo-cat-ears.
 
-/**
- * The shape packing needs, which is the structural core of `AnimationPayload`.
- * Stated here rather than imported so this module stays zod-free; payload.ts
- * proves the two agree by passing its own type to `packWireFormat`.
- */
+/** The structural core of `AnimationPayload`, restated to keep this zod-free. */
 export interface WireKeyframe {
   readonly timeMs: number;
   readonly angles: readonly number[];

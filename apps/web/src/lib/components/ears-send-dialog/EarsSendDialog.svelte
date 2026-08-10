@@ -13,7 +13,8 @@
   import { packWireFormat } from "@milklab/api/wire-format";
   import { ears } from "$lib/ears/connection.svelte";
   import type { Capability, Slot } from "$lib/ears/protocol";
-  import { dialogView, occupantName } from "$lib/ears/send-dialog";
+  import { dialogView } from "$lib/ears/send-dialog";
+  import { occupantName } from "$lib/ears/slot-copy";
   import { MAX_SLOT_NAME_BYTES, truncateToBytes } from "$lib/ears/store";
   import { defaultSlot, sendToSlot, type UploadResult } from "$lib/ears/upload";
   import type { Keyframe } from "$lib/animation/interpolator";
@@ -40,6 +41,7 @@
   let sending = $state(false);
   let framesSent = $state(0);
   let frameCount = $state(0);
+  let checking = $state<string | null>(null);
   let result = $state<UploadResult | null>(null);
 
   const view = $derived(dialogView({ slots, target, name, animationId }));
@@ -57,20 +59,25 @@
 
     sending = true;
     result = null;
+    checking = null;
     framesSent = 0;
     frameCount = 0;
 
     const outcome = await sendToSlot(
       session,
       { slot: target, animationId, name, wire: packWireFormat({ keyframes }), slots },
-      (sent, total) => {
-        framesSent = sent;
-        frameCount = total;
+      {
+        onProgress: (sent, total) => {
+          framesSent = sent;
+          frameCount = total;
+        },
+        onChecking: (message) => (checking = message),
       },
     );
 
     if (outcome.slots !== null) ears.updateSlots(session.deviceId, outcome.slots);
     result = outcome;
+    checking = null;
     sending = false;
   }
 </script>
@@ -112,7 +119,6 @@
               {slot.entry === null ? "Empty" : occupantName(slot)}
             </span>
             {#if chosen && frameCount > 0}
-              <!-- the bar rides on the slot being written, not somewhere else -->
               <span
                 class="absolute inset-x-0 bottom-0 block h-1 bg-emerald-500"
                 style="width: {(framesSent / frameCount) * 100}%"
@@ -149,7 +155,11 @@
     {#if sending}
       <p class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
         <LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
-        {frameCount > 0 ? `Frame ${framesSent} of ${frameCount}…` : "Sending…"}
+        {#if checking}
+          {checking}
+        {:else}
+          {frameCount > 0 ? `Frame ${framesSent} of ${frameCount}…` : "Sending…"}
+        {/if}
       </p>
     {/if}
 
@@ -169,7 +179,7 @@
       <button
         type="button"
         onclick={send}
-        disabled={!view.canConfirm || sending}
+        disabled={!view.canConfirm || sending || ears.session === undefined}
         class="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
       >
         {view.confirmLabel}
