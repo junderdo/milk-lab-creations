@@ -29,10 +29,12 @@ export const BOOTSTRAP_CHUNK_BYTES = 20;
 
 /** The GATT operations a session needs, and nothing else. */
 export interface EarsLink {
+  /** The device's own address, which a cached slot list has to be tagged with. */
+  readonly deviceId: string;
   readonly deviceName: string;
   /** Write-with-response on `ABF1`; rejects if the link is gone. */
   write(frame: Frame): Promise<void>;
-  onResponse(handler: (value: ArrayBufferLike) => void): void;
+  onResponse(handler: (value: Uint8Array) => void): void;
   onDisconnect(handler: () => void): void;
   disconnect(): void;
 }
@@ -45,6 +47,7 @@ export type RequestOutcome =
   | { readonly kind: "link-lost" };
 
 export interface EarsSession {
+  readonly deviceId: string;
   readonly deviceName: string;
   /** Set from `CAPABILITY`; never hardcoded, never derived from the MTU. */
   maxChunkBytes: number;
@@ -110,6 +113,9 @@ export function createSession(link: EarsLink): EarsSession {
         payload,
         maxChunkBytes,
       })) {
+        // an early error response is terminal for the transfer on the device,
+        // so once this request has an outcome there is nothing left to send into
+        if (inFlight === undefined) break;
         await link.write(frame);
       }
     } catch {
@@ -123,6 +129,7 @@ export function createSession(link: EarsLink): EarsSession {
   }
 
   return {
+    deviceId: link.deviceId,
     deviceName: link.deviceName,
     get maxChunkBytes(): number {
       return maxChunkBytes;

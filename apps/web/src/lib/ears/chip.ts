@@ -15,6 +15,8 @@ export type EarsConnectionState =
   | { readonly status: "connecting" }
   | {
       readonly status: "connected";
+      /** The slot list is tagged with the device it came from, never reused across one. */
+      readonly deviceId: string;
       readonly deviceName: string;
       readonly capability: Capability;
       readonly slots: readonly Slot[];

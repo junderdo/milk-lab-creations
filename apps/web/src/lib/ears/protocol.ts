@@ -85,8 +85,7 @@ export interface ResponseFrame {
  * the characteristic is multiplexed, and its readable value carries lighting
  * state under a different type byte.
  */
-export function parseResponseFrame(value: ArrayBufferLike): ResponseFrame | undefined {
-  const bytes = new Uint8Array(value);
+export function parseResponseFrame(bytes: Uint8Array): ResponseFrame | undefined {
   if (bytes.length < FRAME_HEADER_BYTES) return undefined;
 
   const [type, corr, statusCode, chunkIndex, chunkCount] = bytes;

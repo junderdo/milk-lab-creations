@@ -5,10 +5,6 @@
   Browser-only: `navigator.bluetooth` does not exist during SSR, so a chip
   rendered on the server would have to guess and would tell Firefox users the
   wrong thing until hydration corrected it.
-
-  The second line is always drawn rather than hidden in a tooltip — a tooltip
-  never opens on a touch device, and touch devices are where this feature is
-  absent entirely.
 -->
 <script lang="ts">
   import { browser } from "$app/environment";
@@ -53,8 +49,7 @@
     {/if}
     <span class="min-w-0">
       <span class="block truncate text-sm leading-tight">{view.label}</span>
-      <!-- clamped rather than truncated: a failure notice is the whole point of
-           the line, so two lines of it beat one line and an ellipsis -->
+      <!-- clamped, not truncated: a failure notice is the point of the line -->
       <span
         title={view.detail}
         class="line-clamp-2 text-xs leading-tight text-gray-500 dark:text-gray-500"

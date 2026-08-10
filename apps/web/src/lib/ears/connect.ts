@@ -19,6 +19,7 @@ import {
   type SubOpcode,
 } from "./protocol";
 import type { EarsSession, RequestOutcome } from "./session";
+import { statusText } from "./status";
 
 export type HandshakeResult =
   | { readonly ok: true; readonly capability: Capability; readonly slots: Slot[] }
@@ -45,6 +46,11 @@ export async function handshake(session: EarsSession): Promise<HandshakeResult> 
   if (entries === undefined) {
     return refuse(session, "Your ears sent a slot list this app can't read.");
   }
+  // an index the ears just said they don't have would otherwise be dropped,
+  // and a dropped entry reads as an empty slot — the one lie a grid must not tell
+  if (entries.some((entry) => entry.index >= capability.slotCount)) {
+    return refuse(session, "Your ears listed a slot they say they don't have.");
+  }
 
   return { ok: true, capability, slots: buildSlots(capability.slotCount, entries) };
 }
@@ -59,15 +65,12 @@ type PayloadResult =
   | { readonly ok: false; readonly message: string };
 
 async function payloadOf(session: EarsSession, subOpcode: SubOpcode): Promise<PayloadResult> {
-  return describe(await session.request(subOpcode, new Uint8Array(0)));
-}
-
-function describe(outcome: RequestOutcome): PayloadResult {
+  const outcome: RequestOutcome = await session.request(subOpcode, new Uint8Array(0));
   switch (outcome.kind) {
     case "ok":
       return { ok: true, payload: outcome.payload };
     case "failed":
-      return { ok: false, message: outcome.status.message };
+      return { ok: false, message: statusText(outcome.status) };
     case "unknown":
       return { ok: false, message: "Your ears went quiet before they finished connecting." };
     case "link-lost":

@@ -44,6 +44,7 @@ describe("chipView", () => {
   it("shows the device and its real occupancy once connected", () => {
     const view = chipView({
       status: "connected",
+      deviceId: "ears-1",
       deviceName: "ROBO_CAT_EARS",
       capability,
       slots: slots([0, 5]),

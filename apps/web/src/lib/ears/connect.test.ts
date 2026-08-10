@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handshake } from "./connect";
 import { SUB_OPCODE } from "./protocol";
 import type { EarsSession, RequestOutcome } from "./session";
-import { STATUS_CODE, statusFrom } from "./status";
+import { STATUS_CODE, statusFrom, statusText } from "./status";
 
 const CAPABILITY_PAYLOAD = new Uint8Array([1, 16, 0x01, 0xfd]);
 const ok = (payload: Uint8Array): RequestOutcome => ({ kind: "ok", payload });
@@ -11,6 +11,7 @@ function fakeSession(outcomes: Partial<Record<number, RequestOutcome>>) {
   const asked: number[] = [];
   const disconnect = vi.fn();
   const session: EarsSession = {
+    deviceId: "ears-1",
     deviceName: "ROBO_CAT_EARS",
     maxChunkBytes: 20,
     request: (subOpcode) => {
@@ -84,12 +85,41 @@ describe("handshake", () => {
 
     const result = await handshake(session);
 
-    expect(result.ok === false && result.message).toBe(statusFrom(STATUS_CODE.unsupportedOpcode).message);
+    expect(result.ok === false && result.message).toBe(
+      statusText(statusFrom(STATUS_CODE.unsupportedOpcode)),
+    );
   });
 
   it("refuses a capability record it cannot parse", async () => {
     const { session, disconnect } = fakeSession({
       [SUB_OPCODE.capability]: ok(new Uint8Array([1, 16])),
+    });
+
+    const result = await handshake(session);
+
+    expect(result).toMatchObject({ ok: false });
+    expect(disconnect).toHaveBeenCalled();
+  });
+
+  it("shows the wire name and code alongside the sentence, for a bug report", async () => {
+    const { session } = fakeSession({
+      [SUB_OPCODE.capability]: {
+        kind: "failed",
+        status: statusFrom(STATUS_CODE.unsupportedOpcode),
+      },
+    });
+
+    const result = await handshake(session);
+
+    expect(result.ok === false && result.message).toContain("UNSUPPORTED_OPCODE 0x01");
+  });
+
+  it("refuses a listing naming a slot the ears just said they don't have", async () => {
+    const { session, disconnect } = fakeSession({
+      [SUB_OPCODE.capability]: ok(new Uint8Array([1, 4, 0x01, 0xfd])),
+      [SUB_OPCODE.list]: ok(
+        new Uint8Array([1, 9, ...new Array<number>(16).fill(0), 2, 72, 105]),
+      ),
     });
 
     const result = await handshake(session);

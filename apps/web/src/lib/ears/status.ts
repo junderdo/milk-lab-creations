@@ -84,9 +84,6 @@ const STATUSES: readonly EarsStatus[] = [
 
 const BY_CODE = new Map(STATUSES.map((status) => [status.code, status]));
 
-/** Every status, in code order — the copy table, for tests and documentation. */
-export const ALL_STATUSES = STATUSES;
-
 export function statusFrom(code: number): EarsStatus {
   return (
     BY_CODE.get(code) ?? {
@@ -99,4 +96,9 @@ export function statusFrom(code: number): EarsStatus {
 
 export function isOk(code: number): boolean {
   return code === STATUS_CODE.ok;
+}
+
+/** The sentence, with the wire name and code trailing it for a bug report. */
+export function statusText(status: EarsStatus): string {
+  return `${status.message} (${status.name} 0x${status.code.toString(16).padStart(2, "0")})`;
 }

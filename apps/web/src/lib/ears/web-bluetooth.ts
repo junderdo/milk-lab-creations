@@ -60,7 +60,7 @@ export async function openEarsLink(): Promise<LinkResult> {
     // step 1 of the connect sequence: nothing can answer until this lands
     await response.startNotifications();
 
-    return { kind: "ok", link: linkOver(device, gatt, request, response) };
+    return { kind: "ok", link: createLink(device, gatt, request, response) };
   } catch (error) {
     gatt.disconnect();
     return {
@@ -70,13 +70,14 @@ export async function openEarsLink(): Promise<LinkResult> {
   }
 }
 
-function linkOver(
+function createLink(
   device: BluetoothDevice,
   gatt: BluetoothRemoteGATTServer,
   request: BluetoothRemoteGATTCharacteristic,
   response: BluetoothRemoteGATTCharacteristic,
 ): EarsLink {
   return {
+    deviceId: device.id,
     deviceName: device.name ?? "Your ears",
     write: async (frame) => {
       await request.writeValueWithResponse(frame);
@@ -84,7 +85,10 @@ function linkOver(
     onResponse: (handler) => {
       response.addEventListener("characteristicvaluechanged", () => {
         const value = response.value;
-        if (value !== undefined) handler(value.buffer);
+        // the view's own window, not its backing buffer, which is wider
+        if (value !== undefined) {
+          handler(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+        }
       });
     },
     onDisconnect: (handler) => {

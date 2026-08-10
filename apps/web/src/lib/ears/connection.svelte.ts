@@ -48,6 +48,7 @@ function createEarsConnection() {
 
     state = {
       status: "connected",
+      deviceId: live.deviceId,
       deviceName: live.deviceName,
       capability: result.capability,
       slots: result.slots,

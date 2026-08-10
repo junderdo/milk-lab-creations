@@ -70,9 +70,7 @@ describe("encodeRequest", () => {
 
 describe("parseResponseFrame", () => {
   it("reads the five-byte response header", () => {
-    const frame = parseResponseFrame(
-      new Uint8Array([STORE_TYPE, 9, 0x03, 1, 2, 0xde, 0xad]).buffer,
-    );
+    const frame = parseResponseFrame(new Uint8Array([STORE_TYPE, 9, 0x03, 1, 2, 0xde, 0xad]));
 
     expect(frame).toEqual({
       corr: 9,
@@ -85,8 +83,8 @@ describe("parseResponseFrame", () => {
 
   it("ignores a value that is not a store response", () => {
     // ABF2 is multiplexed: its readable value carries lighting state
-    expect(parseResponseFrame(new Uint8Array([0x02, 1, 2, 3, 4]).buffer)).toBeUndefined();
-    expect(parseResponseFrame(new Uint8Array([STORE_TYPE, 1, 0]).buffer)).toBeUndefined();
+    expect(parseResponseFrame(new Uint8Array([0x02, 1, 2, 3, 4]))).toBeUndefined();
+    expect(parseResponseFrame(new Uint8Array([STORE_TYPE, 1, 0]))).toBeUndefined();
   });
 });
 

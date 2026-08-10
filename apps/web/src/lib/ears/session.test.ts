@@ -6,6 +6,8 @@ import { STATUS_CODE } from "./status";
 interface FakeLink {
   readonly link: EarsLink;
   readonly writes: Uint8Array[];
+  holdWrites(): void;
+  releaseWrites(): void;
   respond(bytes: number[]): void;
   drop(): void;
   breakWrites(): void;
@@ -13,16 +15,20 @@ interface FakeLink {
 
 function fakeLink(): FakeLink {
   const writes: Uint8Array[] = [];
-  const onResponse: ((value: ArrayBufferLike) => void)[] = [];
+  const onResponse: ((value: Uint8Array) => void)[] = [];
   const onDisconnect: (() => void)[] = [];
+  const held: (() => void)[] = [];
   let writesBroken = false;
+  let writesHeld = false;
 
   return {
     writes,
     link: {
+      deviceId: "ears-1",
       deviceName: "ROBO_CAT_EARS",
       write: async (frame) => {
         if (writesBroken) throw new Error("GATT operation failed");
+        if (writesHeld) await new Promise<void>((resolve) => held.push(resolve));
         writes.push(frame);
       },
       onResponse: (handler) => onResponse.push(handler),
@@ -32,13 +38,20 @@ function fakeLink(): FakeLink {
       },
     },
     respond: (bytes) => {
-      for (const handler of onResponse) handler(new Uint8Array(bytes).buffer);
+      for (const handler of onResponse) handler(new Uint8Array(bytes));
     },
     drop: () => {
       for (const handler of onDisconnect) handler();
     },
     breakWrites: () => {
       writesBroken = true;
+    },
+    holdWrites: () => {
+      writesHeld = true;
+    },
+    releaseWrites: () => {
+      writesHeld = false;
+      for (const resume of held.splice(0)) resume();
     },
   };
 }
@@ -199,6 +212,25 @@ describe("createSession", () => {
     expect(await session.request(SUB_OPCODE.list, new Uint8Array(0))).toEqual({
       kind: "link-lost",
     });
+  });
+
+  it("stops sending the rest of a transfer once the ears reject it", async () => {
+    const fake = fakeLink();
+    const session = createSession(fake.link);
+    session.maxChunkBytes = 509;
+
+    fake.holdWrites();
+    const outcome = session.request(SUB_OPCODE.store, new Uint8Array(600));
+    await settleMicrotasks();
+
+    // the nack lands while frame 1 is still in flight; the error is terminal
+    // for the transfer on the device, so frame 2 has nowhere to land
+    fake.respond(emptyResponse(0, STATUS_CODE.invalidName));
+    fake.releaseWrites();
+    await settleMicrotasks();
+
+    expect(await outcome).toMatchObject({ kind: "failed" });
+    expect(fake.writes).toHaveLength(1);
   });
 
   it("reassembles a response split across frames", async () => {
