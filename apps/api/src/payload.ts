@@ -10,6 +10,9 @@ import { MAX_PAYLOAD_BYTES, MAX_TIME_MS, type RobotProfile } from "./limits.ts";
 export { MAX_PAYLOAD_BYTES, MAX_TIME_MS, ROBOT_PROFILES } from "./limits.ts";
 export type { RobotProfile } from "./limits.ts";
 
+// Likewise the wire codec, which the web app packs with in the browser.
+export { keyframeWireSize, packWireFormat } from "./wire-format.ts";
+
 const uint16 = z.number().int().min(0).max(MAX_TIME_MS);
 
 export function payloadSchemaFor(profile: RobotProfile) {
@@ -47,35 +50,3 @@ export function derivedScalars(payload: AnimationPayload) {
   };
 }
 
-/** Bytes per keyframe: time(2) + one per channel + ease types(2) + ease durations(4). */
-export function keyframeWireSize(channels: number) {
-  return 8 + channels;
-}
-
-/**
- * Pack to the firmware wire format (big-endian):
- *   [keyframe_count:1]
- *   then per keyframe:
- *   [time_ms:2][angles[0..3]:1 each][ease_in_type:1][ease_out_type:1]
- *   [ease_in_ms:2][ease_out_ms:2]
- * Must stay bit-compatible with custom_animation_serialize() in
- * github.com/junderdo/robo-cat-ears.
- */
-export function packWireFormat(payload: AnimationPayload): Uint8Array {
-  const channels = payload.keyframes[0]!.angles.length;
-  const out = new Uint8Array(1 + payload.keyframes.length * keyframeWireSize(channels));
-  out[0] = payload.keyframes.length;
-  let offset = 1;
-  for (const kf of payload.keyframes) {
-    out[offset++] = (kf.timeMs >> 8) & 0xff;
-    out[offset++] = kf.timeMs & 0xff;
-    for (const angle of kf.angles) out[offset++] = angle;
-    out[offset++] = kf.easeInType;
-    out[offset++] = kf.easeOutType;
-    out[offset++] = (kf.easeInMs >> 8) & 0xff;
-    out[offset++] = kf.easeInMs & 0xff;
-    out[offset++] = (kf.easeOutMs >> 8) & 0xff;
-    out[offset++] = kf.easeOutMs & 0xff;
-  }
-  return out;
-}

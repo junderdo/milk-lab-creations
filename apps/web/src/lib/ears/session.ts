@@ -46,12 +46,25 @@ export type RequestOutcome =
   | { readonly kind: "unknown" }
   | { readonly kind: "link-lost" };
 
+export interface RequestOptions {
+  /**
+   * Called as each frame lands on the link, with the real frame count — the
+   * only honest source for a progress bar, since chunking depends on the
+   * link's `max_chunk_bytes`.
+   */
+  onProgress?(framesSent: number, frameCount: number): void;
+}
+
 export interface EarsSession {
   readonly deviceId: string;
   readonly deviceName: string;
   /** Set from `CAPABILITY`; never hardcoded, never derived from the MTU. */
   maxChunkBytes: number;
-  request(subOpcode: SubOpcode, payload: Uint8Array): Promise<RequestOutcome>;
+  request(
+    subOpcode: SubOpcode,
+    payload: Uint8Array,
+    options?: RequestOptions,
+  ): Promise<RequestOutcome>;
   disconnect(): void;
 }
 
@@ -91,7 +104,11 @@ export function createSession(link: EarsLink): EarsSession {
     settle({ kind: "link-lost" });
   });
 
-  async function send(subOpcode: SubOpcode, payload: Uint8Array): Promise<RequestOutcome> {
+  async function send(
+    subOpcode: SubOpcode,
+    payload: Uint8Array,
+    options: RequestOptions | undefined,
+  ): Promise<RequestOutcome> {
     if (lost) return { kind: "link-lost" };
 
     const requestCorr = corr;
@@ -107,16 +124,14 @@ export function createSession(link: EarsLink): EarsSession {
     });
 
     try {
-      for (const frame of encodeRequest({
-        corr: requestCorr,
-        subOpcode,
-        payload,
-        maxChunkBytes,
-      })) {
+      const frames = encodeRequest({ corr: requestCorr, subOpcode, payload, maxChunkBytes });
+      let sent = 0;
+      for (const frame of frames) {
         // an early error response is terminal for the transfer on the device,
         // so once this request has an outcome there is nothing left to send into
         if (inFlight === undefined) break;
         await link.write(frame);
+        options?.onProgress?.(++sent, frames.length);
       }
     } catch {
       // a rejected write is the link, not the ears: nothing will answer
@@ -137,8 +152,8 @@ export function createSession(link: EarsLink): EarsSession {
     set maxChunkBytes(bytes: number) {
       maxChunkBytes = bytes;
     },
-    request(subOpcode, payload) {
-      const outcome = queue.then(() => send(subOpcode, payload));
+    request(subOpcode, payload, options) {
+      const outcome = queue.then(() => send(subOpcode, payload, options));
       queue = outcome.catch(() => undefined);
       return outcome;
     },

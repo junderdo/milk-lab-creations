@@ -39,20 +39,35 @@ export async function handshake(session: EarsSession): Promise<HandshakeResult> 
 
   session.maxChunkBytes = capability.maxChunkBytes;
 
+  const slots = await readSlots(session, capability.slotCount);
+  if (slots.ok === false) return refuse(session, slots.message);
+
+  return { ok: true, capability, slots: slots.slots };
+}
+
+export type SlotsResult =
+  | { readonly ok: true; readonly slots: Slot[] }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * `LIST`, as every slot the ears have. Shared with the upload path, which
+ * re-reads it after an unknown outcome rather than assuming one.
+ */
+export async function readSlots(session: EarsSession, slotCount: number): Promise<SlotsResult> {
   const listPayload = await payloadOf(session, SUB_OPCODE.list);
-  if (listPayload.ok === false) return refuse(session, listPayload.message);
+  if (listPayload.ok === false) return listPayload;
 
   const entries = parseList(listPayload.payload);
   if (entries === undefined) {
-    return refuse(session, "Your ears sent a slot list this app can't read.");
+    return { ok: false, message: "Your ears sent a slot list this app can't read." };
   }
   // an index the ears just said they don't have would otherwise be dropped,
   // and a dropped entry reads as an empty slot — the one lie a grid must not tell
-  if (entries.some((entry) => entry.index >= capability.slotCount)) {
-    return refuse(session, "Your ears listed a slot they say they don't have.");
+  if (entries.some((entry) => entry.index >= slotCount)) {
+    return { ok: false, message: "Your ears listed a slot they say they don't have." };
   }
 
-  return { ok: true, capability, slots: buildSlots(capability.slotCount, entries) };
+  return { ok: true, slots: buildSlots(slotCount, entries) };
 }
 
 function refuse(session: EarsSession, message: string): HandshakeResult {

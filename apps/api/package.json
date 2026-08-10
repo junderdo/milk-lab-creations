@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./limits": "./src/limits.ts",
-    "./list": "./src/animation-list.ts"
+    "./list": "./src/animation-list.ts",
+    "./wire-format": "./src/wire-format.ts"
   },
   "scripts": {
     "check": "prisma generate && tsc --noEmit",
