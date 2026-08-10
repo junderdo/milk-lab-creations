@@ -25,17 +25,23 @@
     keyframes: readonly Keyframe[];
     deviceName: string;
     capability: Capability;
-    slots: readonly Slot[];
+    initialSlots: readonly Slot[];
     onclose: () => void;
   }
 
-  let { animationId, animationName, keyframes, deviceName, capability, slots, onclose }: Props =
+  let { animationId, animationName, keyframes, deviceName, capability, initialSlots, onclose }: Props =
     $props();
 
-  // Both seeded once, from the state the dialog opened on: the target is the
-  // user's choice from that moment on, and the name is theirs to edit. Hence
-  // `untrack` — re-deriving either would overwrite what the user chose.
-  let target = $state<number | undefined>(untrack(() => defaultSlot(slots, animationId)));
+  // The dialog owns the list it draws, seeded from the state it opened on and
+  // advanced by each send's own result. The page can only hand over a snapshot:
+  // it has to survive the ears going away mid-transfer, so it cannot track the
+  // connection, and a grid that never repainted was the bug this fixes.
+  let slots = $state<readonly Slot[]>(untrack(() => initialSlots));
+
+  // Seeded once: the target is the user's choice from that moment on, and the
+  // name is theirs to edit. Hence `untrack` — re-deriving either would
+  // overwrite what the user chose.
+  let target = $state<number | undefined>(untrack(() => defaultSlot(initialSlots, animationId)));
   let name = $state(untrack(() => truncateToBytes(animationName, MAX_SLOT_NAME_BYTES)));
 
   let sending = $state(false);
@@ -75,7 +81,11 @@
       },
     );
 
-    if (outcome.slots !== null) ears.updateSlots(session.deviceId, outcome.slots);
+    // the grid here and the count on the header chip are the same fact
+    if (outcome.slots !== null) {
+      slots = outcome.slots;
+      ears.updateSlots(session.deviceId, outcome.slots);
+    }
     result = outcome;
     checking = null;
     sending = false;

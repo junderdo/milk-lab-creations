@@ -214,7 +214,7 @@
     {keyframes}
     deviceName={sendTarget.deviceName}
     capability={sendTarget.capability}
-    slots={sendTarget.slots}
+    initialSlots={sendTarget.slots}
     onclose={() => (sendTarget = null)}
   />
 {/if}
