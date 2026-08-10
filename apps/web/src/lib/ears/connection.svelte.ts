@@ -13,6 +13,7 @@
 
 import { chipView, type ChipView, type EarsConnectionState } from "./chip";
 import { handshake } from "./connect";
+import type { Slot } from "./protocol";
 import { createSession, type EarsSession } from "./session";
 import { bluetoothSupported, openEarsLink } from "./web-bluetooth";
 
@@ -67,6 +68,14 @@ function createEarsConnection() {
       return session;
     },
     connect,
+    /**
+     * What an upload learnt about the slots. Ignored unless still connected to
+     * the same device, so a listing can never be shown against another pair.
+     */
+    updateSlots(deviceId: string, slots: readonly Slot[]): void {
+      if (state.status !== "connected" || state.deviceId !== deviceId) return;
+      state = { ...state, slots };
+    },
     disconnect(): void {
       session?.disconnect();
       disconnected(null);

@@ -233,6 +233,26 @@ describe("createSession", () => {
     expect(fake.writes).toHaveLength(1);
   });
 
+  it("reports each frame as it lands on the link, against the real count", async () => {
+    const fake = fakeLink();
+    const session = createSession(fake.link);
+    session.maxChunkBytes = 509;
+
+    const progress: [number, number][] = [];
+    const outcome = session.request(SUB_OPCODE.store, new Uint8Array(600), {
+      onProgress: (sent, total) => progress.push([sent, total]),
+    });
+    await settleMicrotasks();
+
+    expect(progress).toEqual([
+      [1, 2],
+      [2, 2],
+    ]);
+
+    fake.respond(emptyResponse(0, STATUS_CODE.ok));
+    await outcome;
+  });
+
   it("reassembles a response split across frames", async () => {
     const fake = fakeLink();
     const session = createSession(fake.link);

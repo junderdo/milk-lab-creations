@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { keyframesFromPayload } from "$lib/animation/payload";
@@ -7,8 +8,12 @@
   import { limitsFor } from "$lib/editor/document";
   import { ANIMATION_CAP_MESSAGE, atAnimationCap, isAnimationCapError } from "$lib/quota";
   import { trpc } from "$lib/trpc";
+  import { ears } from "$lib/ears/connection.svelte";
+  import { sendEligibility } from "$lib/ears/eligibility";
+  import type { Capability, Slot } from "$lib/ears/protocol";
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
+  import EarsSendDialog from "$lib/components/ears-send-dialog/EarsSendDialog.svelte";
   import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
 
   let { data } = $props();
@@ -53,6 +58,34 @@
   // editor that would refuse to open.
   const editable = $derived(limitsFor(animation.robot?.slug) !== undefined);
 
+  // Anyone who can view an animation can put it on their own ears: the slot
+  // carries the animation's id and name, not the uploader's.
+  const earsState = $derived(ears.state);
+  const sendVerdict = $derived(
+    sendEligibility(earsState, {
+      robotSlug: animation.robot?.slug,
+      keyframeCount: animation.keyframeCount,
+      readableKeyframeCount: keyframes.length,
+    }),
+  );
+  // Captured when the dialog opens rather than read live, so powering the ears
+  // off mid-transfer cannot unmount the dialog that is about to report what
+  // happened — the report is the whole point of that moment.
+  let sendTarget = $state<{
+    deviceName: string;
+    capability: Capability;
+    slots: readonly Slot[];
+  } | null>(null);
+
+  function openSendDialog(): void {
+    if (earsState.status !== "connected") return;
+    sendTarget = {
+      deviceName: earsState.deviceName,
+      capability: earsState.capability,
+      slots: earsState.slots,
+    };
+  }
+
   // Eager fork: the copy happens server-side on click and we land in the editor
   // on it — remixing is a way of starting to create, not a way of collecting.
   async function remix() {
@@ -82,6 +115,19 @@
       <div class="flex items-start justify-between gap-4">
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{animation.name}</h1>
         <div class="flex shrink-0 items-center gap-2">
+          <!-- browser-only: `navigator.bluetooth` doesn't exist during SSR, so a
+               server-rendered button would tell Chrome users the wrong thing
+               until hydration corrected it -->
+          {#if browser}
+            <button
+              type="button"
+              onclick={openSendDialog}
+              disabled={!sendVerdict.canSend}
+              class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Send to my ears
+            </button>
+          {/if}
           {#if data.me?.id === animation.ownerId}
             <!-- the way into the editor; non-owners get Remix instead -->
             <a
@@ -111,6 +157,11 @@
       <RemixAttribution provenance={animation} />
       {#if animation.description}
         <p class="text-sm text-gray-700 dark:text-gray-300">{animation.description}</p>
+      {/if}
+      {#if browser && sendVerdict.reason}
+        <!-- why the send button is disabled, as page text: a tooltip never
+             opens on a touch device, and a missing button is a mystery -->
+        <p class="text-sm text-gray-600 dark:text-gray-400">{sendVerdict.reason}</p>
       {/if}
       {#if remixError}
         <p class="text-sm text-red-600 dark:text-red-400" role="alert">{remixError}</p>
@@ -155,3 +206,15 @@
     </section>
   </div>
 </main>
+
+{#if sendTarget}
+  <EarsSendDialog
+    animationId={animation.id}
+    animationName={animation.name}
+    {keyframes}
+    deviceName={sendTarget.deviceName}
+    capability={sendTarget.capability}
+    initialSlots={sendTarget.slots}
+    onclose={() => (sendTarget = null)}
+  />
+{/if}
