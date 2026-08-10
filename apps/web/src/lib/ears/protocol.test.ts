@@ -225,3 +225,17 @@ describe("versionVerdict", () => {
     expect(verdict).toMatchObject({ ok: false, stale: "app" });
   });
 });
+
+describe("SUB_OPCODE", () => {
+  it("names only the sub-opcodes the ears implement", () => {
+    // RENAME and GET_ANIMATION are reserved-unimplemented and answer
+    // UNSUPPORTED_OPCODE, so there is nothing here for a caller to reach for
+    expect(Object.keys(SUB_OPCODE).sort()).toEqual([
+      "capability",
+      "delete",
+      "list",
+      "play",
+      "store",
+    ]);
+  });
+});
