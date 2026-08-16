@@ -483,7 +483,9 @@ SHA/AES/HMAC would corrupt shared peripheral state. Reject.
 
 **Cost.** RAM: `mbedtls_sha256_context` in the accelerated port is
 `uint32_t total[2]; uint32_t state[8]; unsigned char buffer[64]; int first_block; esp_sha_type mode;
-esp_sha256_state sha_state;` — about **112 bytes**, on the stack, transiently.
+esp_sha256_state sha_state;` — **116 bytes** (8 + 32 + 64 + 4 + 4 + 4), on the stack, transiently.
+(`components/mbedtls/port/include/sha256_alt.h`, the `SOC_SHA_SUPPORT_DMA || SOC_SHA_SUPPORT_RESUME`
+branch, which is the one all three targets take.)
 
 Time: **no Espressif-published benchmark for a small or single-block input exists.** What Espressif
 publishes is a CI throughput *floor* for a 4 MB streaming hash, asserted in
