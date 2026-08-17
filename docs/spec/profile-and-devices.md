@@ -468,7 +468,11 @@ what goes — "Deletes your animations and your list of ears. Cannot be undone."
 
 ## 9. Not yet settled
 
-| Question                                                                                                                                                    | Card       |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Threading the parsed serial from `openEarsLink` → `handshake` → connection state, now that §7 fixes what is on the wire and what `parseCapability` returns. | unassigned |
-| Whether ADR-0001 is amended or a new ADR records the device-identity decision.                                                                              | unassigned |
+| Question                                                                                                                                                    | Card                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Threading the parsed serial from `openEarsLink` → `handshake` → connection state, now that §7 fixes what is on the wire and what `parseCapability` returns. | [Grilling: threading the serial from the link to the registration prompt](https://trello.com/c/6mAXmow0)                        |
+| Whether ADR-0001 is amended or a new ADR records the device-identity decision.                                                                              | [Grilling: where the device-identity decision is recorded](https://trello.com/c/sEJ5S38p) — blocked by the threading card above |
+
+These two are the whole remaining route: once both are settled, this document is the spec and the map
+is walked. The firmware _update_ story that §7.3's reason string implies is **not** on it — delivering
+OTA update is a subsystem in `robo-cat-ears`, ruled out of scope on the map.
