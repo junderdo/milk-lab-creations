@@ -4,13 +4,14 @@ Destination artifact of the [user profile and registered devices wayfinder map](
 
 **This document is incomplete by design.** The map is still being walked; each resolved ticket adds a
 section. What is written here is settled and should not be reopened without cause. What is missing is
-listed in §8, with the card that will settle it.
+listed in §9, with the card that will settle it.
 
 Landed so far:
 
 - [Grilling: what an avatar preset is](https://trello.com/c/EO7vV5gf/93-grilling-what-an-avatar-preset-is) → §1
 - [Grilling: the Device data model and where dismissal lives](https://trello.com/c/gGofc2Rh/94-grilling-the-device-data-model-and-where-dismissal-lives) → §2–§6
 - [Grilling: the CAPABILITY wire change for the device serial](https://trello.com/c/UWfzOo1k/95-grilling-the-capability-wire-change-for-the-device-serial) → §7
+- [Prototype: the profile page and the registration moment](https://trello.com/c/SMvESq0e/96-prototype-the-profile-page-and-the-registration-moment) → §8, amending §3.1
 
 **Scope:** the web app's profile section — a preset avatar, a private list of registered devices, and
 registering a pair of ears after a Web Bluetooth connect.
@@ -158,7 +159,8 @@ module alongside the existing `theme.ts` / `timeline-height.ts` / `draft.ts` wra
 
 ### 3.1 A dismissal silences the prompt, never the feature
 
-Registration stays **permanently reachable from the connected chip**. "Not now" means "stop asking", not
+Registration stays **permanently reachable from the profile page** (§8.5, which amends this paragraph —
+it originally named the connected chip, before the page existed). "Not now" means "stop asking", not
 "hide this". This is what makes a forgettable store an acceptable home: the data it holds is a
 nag-suppressor, not the load-bearing route to a feature.
 
@@ -270,8 +272,9 @@ Ten bytes, big-endian as the rest of the record already is, the serial appended 
 stays one frame with two orders of magnitude of headroom (§10 of the protocol doc budgets 504 payload
 bytes; the response goes from 9 bytes to 15).
 
-**`protocol_version` stays at 1.** An append is not a breaking change — §8's extensibility rule already
-obliges clients to ignore trailing bytes they do not understand, and the deployed `parseCapability`
+**`protocol_version` stays at 1.** An append is not a breaking change — the protocol doc's §8
+extensibility rule already obliges clients to ignore trailing bytes they do not understand, and the
+deployed `parseCapability`
 already does. Bumping it would be actively harmful: `versionVerdict` refuses on _exact_ inequality, so
 every deployed client would hard-disconnect from new ears and blame the ears' firmware for a change
 that broke nothing.
@@ -292,8 +295,9 @@ _passes_ `/^[0-9a-f]{12}$/`, so a zero serial that escapes the parse boundary re
 device that every failed unit in the fleet shares.
 
 `payload.length < 4` remains the only rejection — the existing "answered with a capability record this
-app can't read" refusal. A length of **5–9 is read as no serial**, not as a rejection: §8's rule says a
-client ignores trailing bytes it cannot interpret, and three leftover bytes are exactly that. No legal
+app can't read" refusal. A length of **5–9 is read as no serial**, not as a rejection: the protocol
+doc's §8 rule says a client ignores trailing bytes it cannot interpret, and three leftover bytes are
+exactly that. No legal
 firmware can emit 5–9, since the serial's offset and width are now fixed; treating the impossible as
 absence costs one branch fewer than asserting against it, and a firmware emitting seven bytes is a bench
 bug, not a field condition.
@@ -322,7 +326,7 @@ already distinguishes them for free.
 `versionVerdict` sets the precedent both ways: it writes its two directions separately rather than
 collapsing to a neutral message, and it already uses the phrase "their firmware needs updating".
 
-Noted and accepted: the firmware _update_ story these strings imply does not exist yet (§8). That is
+Noted and accepted: the firmware _update_ story these strings imply does not exist yet (§9). That is
 already true of `versionVerdict` today, so this does not make it worse — but it is the second cheque
 written against it.
 
@@ -366,10 +370,105 @@ conforms.
 
 ---
 
-## 8. Not yet settled
+## 8. The profile page and the registration moment
 
-| Question                                                                                                                                                                                                                                                         | Card                                                                                                                                               |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The chip's shape. §3.1 and §4 mean a connected chip must offer _disconnect_ **and** _register_ while rendering a resolved name, but `ChipView.action` is a closed three-verb union. Menu, widened union, or something else — and the registration moment itself. | [Prototype: the profile page and the registration moment](https://trello.com/c/SMvESq0e/96-prototype-the-profile-page-and-the-registration-moment) |
-| Threading the parsed serial from `openEarsLink` → `handshake` → connection state, now that §7 fixes what is on the wire and what `parseCapability` returns.                                                                                                      | unassigned                                                                                                                                         |
-| Whether ADR-0001 is amended or a new ADR records the device-identity decision.                                                                                                                                                                                   | unassigned                                                                                                                                         |
+Settled by building it. Three structurally different variants were made and reacted to, per ADR-0001's
+own precedent; the prototype is on the throwaway branch **`prototype/profile-and-registration`** and
+the winning shape is **a settings page with an in-place identity block**. Rejected: tabs on `/my`
+(variant B) and a profile hub that absorbs `/my` entirely (variant C).
+
+### 8.1 The profile is its own page at `/profile`
+
+A sibling route, not a tab and not a section of `/my`. `/my` stays exactly what it is — one page, one
+job, the animations list — and the header's name-and-avatar links to `/profile`.
+
+- **Rejected: tabs on `/my`** (variant B). It makes a page that answers "what have I made?" also answer
+  "who am I?" and "what do I own?", and the tab strip is a permanent widget serving a page most users
+  open to do one thing. The nav label had to soften to "My stuff" to stay honest, which is the tell.
+- **Rejected: the hub** (variant C). Identity above the animation list reads well when you own three
+  animations and badly when you own forty; the profile is the rarely-visited page and it took the
+  top of the frequently-visited one.
+- **Not `/settings`.** The page is identity and possessions, not preferences. Account deletion sits
+  there as a consequence of it being the page about your account, and the theme toggle stays in the
+  header where it already is.
+
+### 8.2 Identity edits in place, and is the page's title
+
+The avatar and display name are **not** labelled form rows. The page opens with the avatar at
+`size-20` carrying a pencil badge — pressing it opens the eight-swatch tray inline — beside the
+display name, which is a button until it is clicked and an input afterwards, committing on blur.
+This block replaces the page heading: the page is reached by pressing your own name, and an h1 reading
+"Profile" above your name and face repeats what the reader can already see.
+
+`updateDisplayName` and `setAvatar` (§1) are the writers; both already exist or are specified, and
+neither has had a caller until now.
+
+### 8.3 The device list is a table, and says it is private
+
+Columns: **name**, **serial**, **registered**, and the row actions **rename** and **forget**. The row
+for the pair connected right now carries a "connected now" pill — the one live fact the page shows, and
+it comes from the connection state the client already holds, never from a GATT read (the profile page is
+a place where the ears are almost certainly not connected).
+
+"Only you can see this list" sits beside the heading. Devices are private permanently, and the page
+that shows them should say so rather than leave the user to infer it.
+
+Empty state: "No ears registered yet. Connect a pair from the header and you'll be asked to name them."
+— it names the affordance that produces the first row.
+
+### 8.4 The registration moment is a modal that interrupts the connect
+
+When a connect completes against a serial that is known, unregistered and undismissed (§3), a dialog
+opens over whatever page the user is on. It says why the name matters — every pair advertises itself
+as the same model name — shows the serial as secondary text, takes one input, and offers **Save** and
+**Not now**.
+
+- **Interrupting is the point.** Registration _is_ naming (§2.3), and the moment the user has just
+  proven they hold this pair is the only moment the question is cheap to answer. A banner that can be
+  scrolled past (variant B) turns a one-input action into a thing to get around to.
+- **"Not now" is a real answer, not a delay.** It writes the dismissal key (§3) and the prompt does not
+  return for that pair. The copy says "Not now" rather than "Later" or "Skip" because it is the honest
+  description of what the button does: this pair, not asked again.
+- Modal, not the chip's own popover (variant C): the naming field wants a label, an explanation and
+  room to breathe, and a popover anchored to a header control has none of the three.
+
+### 8.5 The second door is the profile page — **this amends §3.1**
+
+§3.1 was written before the profile page existed and named the connected chip as the permanent route to
+registration. It is the page instead: a register row under the device table, showing the connected
+pair's serial and one input, present whenever a connect is live.
+
+**`ChipView.action` stays a closed three-verb union.** This settles the question §9 carried until now.
+The chip remains a status display with one verb, and it gains no menu:
+
+- A menu puts a rarely-used verb behind an extra press on the app's most-pressed control, and every
+  press of it is a press that is not connecting or disconnecting.
+- Once the profile page exists, a chip menu duplicates it. Two doors to one action is the thing that
+  makes both harder to describe.
+- The chip is not silent about it: connected to an unregistered pair it reads **"Unregistered · this
+  tab only"** as its detail line, which is where a user learns there is something to do. Connected to a
+  registered pair it reads the chosen name (§4), which is the payoff.
+
+A menu remains addable later without a schema change, if the page turns out to be too far away.
+
+### 8.6 Ears that cannot identify themselves show the row, disabled, with the reason
+
+The register row is **visible but disabled, with the reason as page text** — ADR-0001's precedent, and
+the same rule §3.2 already applies to the prompt. The reason is whichever of §7.3's two strings the
+connection carries: the firmware is behind and needs updating, or these ears could not identify
+themselves. A missing row is a mystery; a disabled one with a sentence is an answer.
+
+### 8.7 Account deletion is the last thing on the page
+
+The danger zone sits at the bottom, below the devices: a red-outlined button and one sentence saying
+what goes — "Deletes your animations and your list of ears. Cannot be undone." It calls the existing
+`deleteAccount` (§6), which is the third procedure this page gives a caller.
+
+---
+
+## 9. Not yet settled
+
+| Question                                                                                                                                                    | Card       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Threading the parsed serial from `openEarsLink` → `handshake` → connection state, now that §7 fixes what is on the wire and what `parseCapability` returns. | unassigned |
+| Whether ADR-0001 is amended or a new ADR records the device-identity decision.                                                                              | unassigned |
