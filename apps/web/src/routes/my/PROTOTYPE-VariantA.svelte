@@ -1,16 +1,21 @@
 <!--
-  PROTOTYPE — variant A: "Settings page".
+  PROTOTYPE — variant A: "Settings page", now with C's identity block.
 
   The profile is its own page, reached from the user's name in the header, and
-  /my stays exactly what it is today. Everything is a labelled form row: avatar,
-  name, devices as a table, danger zone last. The registration moment is a modal
-  that interrupts the connect — you named your ears or you said no.
+  /my stays exactly what it is today. Devices are a table, danger zone last, and
+  the registration moment is a modal that interrupts the connect — you named
+  your ears or you said no.
+
+  Identity is no longer two labelled form rows. C's header won: the avatar and
+  name edit in place at the top of the page — click the avatar for the swatches,
+  click the name to type over it — and it doubles as the page's title, so the
+  "Profile" heading is gone. Everything below it stays a settings page.
 
   In the prototype the page is `?variant=A&pane=profile` rather than a real
   route, so the switcher can reach it; read it as `/settings`.
 -->
 <script lang="ts">
-  import { Trash2, Bluetooth } from "@lucide/svelte";
+  import { Trash2, Bluetooth, Pencil } from "@lucide/svelte";
   import { PRESET_KEYS, PRESETS, avatarOf } from "$lib/profile/PROTOTYPE-avatars";
   import Avatar from "$lib/profile/PROTOTYPE-Avatar.svelte";
   import { proto } from "$lib/profile/PROTOTYPE-profile.svelte";
@@ -19,6 +24,8 @@
   let renameValue = $state("");
   let registerName = $state("");
   let dialogDismissed = $state<string | null>(null);
+  let pickerOpen = $state(false);
+  let editingName = $state(false);
 
   const showDialog = $derived(proto.needsRegistration && dialogDismissed !== proto.connectedSerial);
   const current = $derived(avatarOf(proto.avatar, proto.userId));
@@ -35,20 +42,61 @@
 </script>
 
 <div class="mx-auto max-w-3xl space-y-10 px-4 py-10">
-  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Profile</h1>
+  <header class="flex items-center gap-5">
+    <button
+      type="button"
+      onclick={() => (pickerOpen = !pickerOpen)}
+      aria-expanded={pickerOpen}
+      aria-label="Change avatar"
+      class="relative rounded-full ring-1 ring-gray-200 hover:ring-gray-400 dark:ring-gray-800"
+    >
+      <Avatar preset={current} size="size-20" />
+      <span
+        class="absolute right-0 bottom-0 rounded-full bg-gray-900 p-1 text-white dark:bg-white dark:text-gray-900"
+      >
+        <Pencil class="size-3" aria-hidden="true" />
+      </span>
+    </button>
 
-  <section class="space-y-3">
-    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Avatar</h2>
-    <p class="text-sm text-gray-600 dark:text-gray-400">
-      Shown next to your name wherever your animations appear.
-    </p>
-    <div class="flex flex-wrap gap-3">
+    <div class="min-w-0 flex-1">
+      {#if editingName}
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          bind:value={proto.displayName}
+          autofocus
+          onblur={() => (editingName = false)}
+          class="w-full max-w-xs rounded-md border border-gray-300 px-2 py-1 text-2xl font-bold dark:border-gray-700 dark:bg-gray-800"
+        />
+      {:else}
+        <button
+          type="button"
+          onclick={() => (editingName = true)}
+          class="group flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white"
+        >
+          {proto.displayName}
+          <Pencil
+            class="size-4 text-gray-400 opacity-0 group-hover:opacity-100"
+            aria-hidden="true"
+          />
+        </button>
+      {/if}
+      <p class="mt-1 text-sm text-gray-500">
+        Your name and avatar are public — they show on every animation you share.
+      </p>
+    </div>
+  </header>
+
+  {#if pickerOpen}
+    <div class="flex flex-wrap gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
       {#each PRESET_KEYS as key (key)}
         <button
           type="button"
-          onclick={() => proto.setAvatar(key)}
-          aria-pressed={current === key}
           title={PRESETS[key].name}
+          aria-pressed={current === key}
+          onclick={() => {
+            proto.setAvatar(key);
+            pickerOpen = false;
+          }}
           class="rounded-full p-0.5 {current === key
             ? 'ring-2 ring-gray-900 dark:ring-white'
             : 'ring-1 ring-gray-200 hover:ring-gray-400 dark:ring-gray-800'}"
@@ -57,12 +105,7 @@
         </button>
       {/each}
     </div>
-  </section>
-
-  <section class="space-y-3">
-    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Display name</h2>
-    <input bind:value={proto.displayName} class="{fieldClass} max-w-sm" />
-  </section>
+  {/if}
 
   <section class="space-y-3">
     <div class="flex items-center justify-between">
