@@ -1,12 +1,15 @@
-# Profile and Registered Devices — Spec (in assembly)
+# Profile and Registered Devices — Spec
+
+Status: settled
 
 Destination artifact of the [user profile and registered devices wayfinder map](https://trello.com/c/gi2Ipg3P/91-wayfinder-map-user-profile-and-registered-devices).
 
-**This document is incomplete by design.** The map is still being walked; each resolved ticket adds a
-section. What is written here is settled and should not be reopened without cause. What is missing is
-listed in §9, with the card that will settle it.
+**The map is walked and every question it raised is answered.** What is written here is settled and
+should not be reopened without cause. The durable decisions about device identity have been lifted into
+[ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md), which outlives this document; the sections
+below point at it rather than restating it.
 
-Landed so far:
+Cards that built it:
 
 - [Grilling: what an avatar preset is](https://trello.com/c/EO7vV5gf/93-grilling-what-an-avatar-preset-is) → §1
 - [Grilling: the Device data model and where dismissal lives](https://trello.com/c/gGofc2Rh/94-grilling-the-device-data-model-and-where-dismissal-lives) → §2–§6
@@ -14,6 +17,9 @@ Landed so far:
 - [Prototype: the profile page and the registration moment](https://trello.com/c/SMvESq0e/96-prototype-the-profile-page-and-the-registration-moment) → §8, amending §3.1
 - [Grilling: threading the serial from the link to the registration prompt](https://trello.com/c/6mAXmow0/97-grilling-threading-the-serial-from-the-link-to-the-registration-prompt)
   → §10, amending §5, §7.2 and §8.5, and adding an ordering rule to §3.3
+- [Grilling: where the device-identity decision is recorded](https://trello.com/c/sEJ5S38p/98-grilling-where-the-device-identity-decision-is-recorded)
+  → [ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md), thinning §2.1, §2.2, §6.1 and §7 to
+  pointers
 
 **Scope:** the web app's profile section — a preset avatar, a private list of registered devices, and
 registering a pair of ears after a Web Bluetooth connect.
@@ -65,50 +71,35 @@ model Device {
 
 ### 2.1 The key is `(ownerId, serial)`, with no surrogate id
 
-This is the one table in the schema without a UUID primary key, and the inconsistency is deliberate.
+**The reasoning is in [ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md), which owns it.**
+This is the one table in the schema without a UUID primary key, and the inconsistency is deliberate:
+the owner is half the key rather than a filter someone has to remember to write.
 
-- **It deletes a bug class.** Every procedure addresses a device as `(caller's ownerId, serial)`. The
-  owner is not a filter someone has to remember to write — it is half the key. `rename` cannot be made
-  to touch another user's row even by a careless implementation, which is the usual way this shape of
-  table goes wrong.
-- **The only read needs no secondary index.** "My devices" is `WHERE owner_id = $1`, a prefix scan of
-  the primary key. A surrogate id would cost a UUID PK _and_ a unique index, neither of which serves any
-  query the feature has.
-- **Uniqueness stops depending on a background build.** Index creation on DSQL is always asynchronous
-  (`CREATE INDEX ASYNC` is mandatory syntax), so a unique index is not enforced until its job completes.
-  A primary key declared in `CREATE TABLE` is structural.
+Two consequences that bear on the rest of this spec:
+
+- **"My devices" is `WHERE owner_id = $1`**, a prefix scan of the primary key. No secondary index, and
+  none should be added.
+- **Treat the key choice as permanent.** `ALTER TABLE … ADD PRIMARY KEY` is absent from DSQL's
+  published `ALTER TABLE` grammar.
 
 Costs accepted: the serial appears in any client cache key that addresses a device, and a future table
 referencing a device would carry two columns. The map rules out the referencing case, and the serial is
 already held in memory by the client.
 
-`ALTER TABLE … ADD PRIMARY KEY` is absent from DSQL's published `ALTER TABLE` grammar, so **treat the
-key choice as permanent.**
-
 ### 2.2 `serial` is bare `TEXT`, lowercase hex
 
-- **Not `bytea`.** AWS's supported-data-types page gives `bytea` **"Index support: No"**. The serial
-  must sit in the primary key, so binary storage is not merely unattractive — it is unavailable.
-- **Not `VARCHAR(n)`.** `ALTER COLUMN … TYPE` is absent from the DSQL grammar, so a width chosen today
-  is permanent. Bare `TEXT` also matches every other string column in this schema; a lone length-typed
-  column would read as though the length were load-bearing.
-- **Width and alphabet are pinned in Zod, not in the database.** `SERIAL_HEX_CHARS = 12` goes in
-  `apps/api/src/limits.ts` (dependency-free and shared with the web app, like `NAME_MAX`), consumed as
-  `z.string().regex(/^[0-9a-f]{12}$/)` in `router.ts`. DSQL adds `CHECK` constraints as
-  `NOT VALID`, so the boundary schema was always going to be the real gate.
+**The reasoning is in [ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md)** — not `bytea`
+(no index support on DSQL, and this column sits in the primary key), not `VARCHAR(n)` (no
+`ALTER COLUMN … TYPE`, so a width chosen today is permanent either way), and lowercase strictly
+rejected rather than normalized.
 
-The width comes from [`docs/research/device-serial-derivation.md`](../research/device-serial-derivation.md):
-six digest bytes, twelve lowercase hex characters. Six matches the 48-bit width of the MAC being
-hashed, so the truncation discards no resolution the input ever had, and the per-owner collision risk
-is ~3.6 × 10⁻¹⁴ — the key is `(ownerId, serial)`, so only one person owning two colliding pairs is a
-problem at all, and the failure is a `CONFLICT` on `register` rather than a mis-attribution.
+What to write here:
 
-**Lowercase is strict — uppercase is rejected, not normalized.** `'AB12' ≠ 'ab12'` to Postgres, so two
-legal spellings would let the same physical device be registered twice by one owner, which is the one
-thing the composite key exists to prevent. "Be liberal in what you accept" does not apply: the only
-producer is our own client, formatting bytes it read from a `CAPABILITY` frame with a hex encoder we
-write. If the firmware ever emits the serial as an uppercase _string_, the client normalizes before the
-schema sees it — do not loosen the regex to make a 400 go away.
+- `SERIAL_HEX_CHARS = 12` in `apps/api/src/limits.ts` (dependency-free and shared with the web app,
+  like `NAME_MAX`), consumed as `z.string().regex(/^[0-9a-f]{12}$/)` in `router.ts`. DSQL adds `CHECK`
+  constraints as `NOT VALID`, so the boundary schema was always going to be the real gate.
+- If the firmware ever emits the serial as an uppercase _string_, the client normalizes before the
+  schema sees it — do not loosen the regex to make a 400 go away.
 
 ### 2.3 `name` is required, reuses `nameSchema`, and is not unique
 
@@ -256,18 +247,20 @@ them, and a re-registration under a fresh Cognito sub would never collide, becau
 
 ### 6.1 Stated non-goal: the serial is client-asserted
 
-Nothing stops a client registering a serial it never saw. This is accepted, not overlooked. Rows are
-per-owner and permanently private, there is no global `Device` entity, and no reader crosses users — so
-the only person affected by a fabricated serial is the fabricator, whose own list gets an entry for ears
-that do not exist. Do not add a proof-of-possession scheme without a reader that would justify it.
+Nothing stops a client registering a serial it never saw. This is accepted, not overlooked — see
+[ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md), which owns the reasoning and the rest of
+what the serial does not promise. **Do not add a proof-of-possession scheme without a reader that
+would justify it.**
 
 ---
 
 ## 7. The serial on the wire
 
-Settled on card 95. The firmware half of this — the record layout, the derivation, and the doc rules
-that keep both true — lives in `robo-cat-ears/docs/ble-protocol.md` §6–§12. This section is the
-client's half: what the web app parses, and what it shows when there is nothing to parse.
+Settled on card 95. **The wire contract is owned by `robo-cat-ears/docs/ble-protocol.md`**, which names
+itself the contract between the three repositories, and the identity semantics are owned by
+[ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md). The appended field is not yet written into
+the protocol doc — it lands with the firmware change. This section is the client's half: what the web
+app parses, and what it shows when there is nothing to parse.
 
 ### 7.1 The record grows by six bytes, and the version does not move
 
@@ -275,20 +268,13 @@ client's half: what the web app parses, and what it shows when there is nothing 
 [protocol_version:u8][slot_count:u8][max_chunk_bytes:u16][serial:6]
 ```
 
-Ten bytes, big-endian as the rest of the record already is, the serial appended **last**. The response
-stays one frame with two orders of magnitude of headroom (§10 of the protocol doc budgets 504 payload
-bytes; the response goes from 9 bytes to 15).
+Ten bytes, big-endian as the rest of the record already is, the serial appended **last**, raw bytes on
+the wire and hex only in the client. The response stays one frame with two orders of magnitude of
+headroom (§10 of the protocol doc budgets 504 payload bytes; the response goes from 9 bytes to 15).
 
-**`protocol_version` stays at 1.** An append is not a breaking change — the protocol doc's §8
-extensibility rule already obliges clients to ignore trailing bytes they do not understand, and the
-deployed `parseCapability`
-already does. Bumping it would be actively harmful: `versionVerdict` refuses on _exact_ inequality, so
-every deployed client would hard-disconnect from new ears and blame the ears' firmware for a change
-that broke nothing.
-
-The serial is **six raw bytes on the wire, hex only in the client.** ASCII hex would double the bytes
-and put a hex encoder in firmware to no purpose; the client is formatting bytes for display and a
-primary key either way (§2.2).
+**`protocol_version` stays at 1** — an append is absorbed by the protocol doc's §8 extensibility rule,
+and bumping it would make every deployed client hard-disconnect from new ears over a change that broke
+nothing. [ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md) owns the argument.
 
 ### 7.2 Presence is a length check, and all-zero means "cannot tell you"
 
@@ -299,24 +285,22 @@ serial present  ⟺  payload.length >= 10  and  bytes 4..9 are not all zero
 `parseCapability` returns **no serial at all**, never a string, when the predicate fails. This section
 originally wrote that as `serial: string | null`; **§10.1 amends the return type** to a union that also
 carries _why_ there is no serial, which §7.3's two strings need and a nullable string discards. Every
-rule below is unchanged by that. This is the only place the check may live: all-zero hexes to `"000000000000"`, which
-_passes_ `/^[0-9a-f]{12}$/`, so a zero serial that escapes the parse boundary registers a phantom
-device that every failed unit in the fleet shares.
+rule below is unchanged by that.
+
+**The parse boundary is the only place this check may live.** All-zero hexes to `"000000000000"`, which
+_passes_ `/^[0-9a-f]{12}$/`, so a zero serial that escapes the boundary registers a phantom device that
+every failed unit in the fleet shares.
 
 `payload.length < 4` remains the only rejection — the existing "answered with a capability record this
 app can't read" refusal. A length of **5–9 is read as no serial**, not as a rejection: the protocol
 doc's §8 rule says a client ignores trailing bytes it cannot interpret, and three leftover bytes are
-exactly that. No legal
-firmware can emit 5–9, since the serial's offset and width are now fixed; treating the impossible as
-absence costs one branch fewer than asserting against it, and a firmware emitting seven bytes is a bench
-bug, not a field condition.
+exactly that. No legal firmware can emit 5–9, since the serial's offset and width are now fixed;
+treating the impossible as absence costs one branch fewer than asserting against it, and a firmware
+emitting seven bytes is a bench bug, not a field condition.
 
-**The field is fixed-width, and optionality is a reserved value rather than an omission.** Omitting it
-would make the record's length non-monotone — legal lengths of 4, 6, 10, 12 once anything else is
-appended — and a client could no longer locate any field by offset, because offsets would depend on
-whether an _earlier optional_ field had been emitted. The serial would be the first and last optional
-field the record could ever have. A reserved all-zero value is also the pattern `LIST` already uses:
-§7.2 of the protocol doc reads an all-zero `animation_id` as "watch-authored".
+Why the field is fixed-width with a reserved all-zero value rather than omitted — overriding the
+recommendation in the research note — is in
+[ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md).
 
 ### 7.3 Three causes, two reasons
 
@@ -341,20 +325,18 @@ written against it.
 
 ### 7.4 The derivation is frozen the moment anyone registers
 
-The serial is `SHA-256("milklab-ears-serial-v1" ‖ factory eFuse MAC)`, truncated to the first six
-bytes. **Once one device is registered, none of those three choices can change.** A different domain
-string, hash, or width makes every physical unit report a _different_ serial after a firmware update —
-so every `Device` row is orphaned, the user's ears arrive as an unregistered stranger, and their named
-row is unreachable garbage keyed to a serial no device will ever emit again. There is no repair: the
-key is `@@id([ownerId, serial])` with no surrogate id (§2.1), and DSQL has no `ALTER COLUMN … TYPE`.
+```
+serial = SHA-256("milklab-ears-serial-v1" ‖ factory eFuse MAC)[0..6]
+```
 
-This is a one-way door of the same class as the column types in §1 and §2.2, and it is worth being
-blunt about because a hash is exactly the kind of thing someone improves.
+**Once one device is registered, none of those three choices — domain string, hash, width — can ever
+change**, and there is no repair, because the key is `@@id([ownerId, serial])` with no surrogate id
+(§2.1) and DSQL has no `ALTER COLUMN … TYPE`. This is a one-way door of the same class as the column
+types in §1 and §2.2.
 
-**The `v1` in the domain string is decorative.** It was chosen as free domain separation, which it is,
-but it should not be read as an upgrade path — there can be no v2 for an already-registered fleet
-without forcing every user to re-register every pair of ears. Keep the literal exactly as written;
-changing it _is_ the breaking change described above.
+**[ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md) is the durable record of this**, and is
+where the full argument lives — including why the `v1` in the domain string is decorative rather than
+an upgrade path. It is deliberately kept outside this spec, which ends when the feature is built.
 
 ### 7.5 The cached slot list is not tagged with the serial
 
@@ -480,15 +462,21 @@ what goes — "Deletes your animations and your list of ears. Cannot be undone."
 
 ---
 
-## 9. Not yet settled
+## 9. Settled, and what was ruled out
 
-| Question                                                                       | Card                                                                                                  |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Whether ADR-0001 is amended or a new ADR records the device-identity decision. | [Grilling: where the device-identity decision is recorded](https://trello.com/c/sEJ5S38p) — unblocked |
+Nothing on the map is open. The last question — where the device-identity decision is recorded —
+was settled on
+[card 98](https://trello.com/c/sEJ5S38p/98-grilling-where-the-device-identity-decision-is-recorded):
+a new ADR, [ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md), owning the derivation, the wire
+carriage, the storage key and the threat posture, with ADR-0001 gaining a forward cross-reference.
 
-One question left: once it is settled, this document is the spec and the map is walked. The firmware
-_update_ story that §7.3's reason string implies is **not** on it — delivering OTA update is a subsystem
-in `robo-cat-ears`, ruled out of scope on the map.
+Two things the map deliberately leaves undone:
+
+- **The firmware _update_ story that §7.3's reason string implies does not exist.** Delivering OTA
+  update is a subsystem in `robo-cat-ears`, ruled out of scope on the map.
+- **The six appended bytes are not yet in `robo-cat-ears/docs/ble-protocol.md` §8.** That repo is the
+  owner of record for the wire contract; the field lands there with the firmware change, carrying a
+  copy of ADR-0002's freeze warning.
 
 ---
 

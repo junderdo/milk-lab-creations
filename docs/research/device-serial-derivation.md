@@ -12,6 +12,11 @@ Everything below is sourced from the ESP-IDF tree the firmware builds against, t
 documentation for that version, Espressif chip documentation, and the firmware's own code. Where
 Espressif is silent, that is stated as a finding rather than filled in.
 
+> **The decision this note fed is recorded in
+> [ADR-0002 — How a pair of ears is identified](../adr/0002-how-a-pair-of-ears-is-identified.md).**
+> This note is a dated snapshot of what the sources said on 2026-08-16 and is not revised to stay
+> true; the ADR is what binds.
+
 > **One recommendation here was overridden.** §7 proposes omitting the six bytes when the read fails;
 > card 95 chose a fixed-width record with a reserved all-zero value instead, because omission makes the
 > record's length non-monotone and destroys the stable offsets that later appends depend on. See §7.2

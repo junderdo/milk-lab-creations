@@ -30,6 +30,11 @@ contract, and the UI says so in plain words rather than pretending otherwise. Ev
 serializes app-wide through this one object, which is what the protocol requires (concurrent
 operations may reject with `NetworkError`); all of it is main-thread only.
 
+The capability record this singleton holds has since grown a device serial, and registering a pair of
+ears writes a row that outlives every session — so **connect-per-session does not mean nothing
+persists.** The connection is still session-scoped; the device's identity is not. See
+[ADR-0002](./0002-how-a-pair-of-ears-is-identified.md).
+
 **Choosing a slot.** The dialog shows the device's real occupancy — the mandated connect sequence
 already reads `LIST`, so there is no reason to guess. The default target is the slot already holding
 this animation (matched on the 16-byte `Animation.id`), else the first empty slot. Rejected: silently
