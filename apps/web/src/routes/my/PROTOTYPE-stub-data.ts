@@ -28,8 +28,8 @@ const ITEMS = [
   { name: "Happy wiggle", keyframes: 12, spread: 180, visibility: "public", remixed: false },
 ];
 
-export function stubMyPageData(query: ListQuery) {
-  const items = ITEMS.map((item, i) => ({
+function stubItems() {
+  return ITEMS.map((item, i) => ({
     id: `00000000-0000-4000-8000-00000000000${i}`,
     name: item.name,
     payload: { keyframes: wave(item.keyframes, item.spread) },
@@ -38,11 +38,39 @@ export function stubMyPageData(query: ListQuery) {
     visibility: item.visibility,
     remixedFromId: item.remixed ? "00000000-0000-4000-8000-0000000000ff" : null,
   }));
+}
 
+const ROBOTS = [{ slug: "robo-cat-ears", name: "Robo Cat Ears" }];
+
+export function stubMyPageData(query: ListQuery) {
+  const items = stubItems();
   return {
     mine: { items, page: 1, pageCount: 1, total: items.length },
-    robots: [{ slug: "robo-cat-ears", name: "Robo Cat Ears" }],
+    robots: ROBOTS,
     quota: { count: items.length, limit: 40 },
+    query,
+  };
+}
+
+/**
+ * The gallery needs the tRPC API on :3001, which the prototype does not run.
+ * Without this, the header's own "Gallery" link is a 500 — a dead end that has
+ * nothing to do with the variants being judged.
+ */
+export function stubGalleryData(query: ListQuery) {
+  const items = stubItems();
+  return {
+    gallery: {
+      items: items.map((item) => ({
+        ...item,
+        owner: { displayName: "Jeff" },
+        robot: ROBOTS[0],
+      })),
+      page: 1,
+      pageCount: 1,
+      total: items.length,
+    },
+    robots: ROBOTS,
     query,
   };
 }
