@@ -8,19 +8,26 @@ import type { PageLoad } from "./$types";
 
 export const load: PageLoad = async ({ fetch, parent, url }) => {
   const { accessToken } = await parent();
-  // PROTOTYPE — signed out with a variant selected, serve fakes instead of
-  // bouncing to Cognito, so the variants run on the dev server alone.
-  if (dev && !accessToken && url.searchParams.has("variant")) {
-    return stubMyPageData(parseListQuery(url.searchParams));
-  }
-  if (!accessToken) redirect(302, "/auth/login");
   const query = parseListQuery(url.searchParams);
+  // PROTOTYPE — a variant in the URL means fakes are acceptable, so the
+  // variants run on the dev server alone: signed out, don't bounce to Cognito;
+  // signed in with no API on :3001, don't 500 on a real query either. A stale
+  // cookie from earlier work must not decide whether the prototype loads.
+  const prototyping = dev && url.searchParams.has("variant");
+  if (prototyping && !accessToken) return stubMyPageData(query);
+
+  if (!accessToken) redirect(302, "/auth/login");
   const client = trpc(fetch, accessToken);
-  // the page shows one page of animations, so the cap counter is its own query
-  const [mine, robots, quota] = await Promise.all([
-    client.animations.mine.query(listQueryInput(query)),
-    client.robots.list.query(),
-    client.animations.quota.query(),
-  ]);
-  return { mine, robots, quota, query };
+  try {
+    // the page shows one page of animations, so the cap counter is its own query
+    const [mine, robots, quota] = await Promise.all([
+      client.animations.mine.query(listQueryInput(query)),
+      client.robots.list.query(),
+      client.animations.quota.query(),
+    ]);
+    return { mine, robots, quota, query };
+  } catch (error) {
+    if (prototyping) return stubMyPageData(query);
+    throw error;
+  }
 };
