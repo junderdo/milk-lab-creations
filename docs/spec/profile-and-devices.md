@@ -12,6 +12,8 @@ Landed so far:
 - [Grilling: the Device data model and where dismissal lives](https://trello.com/c/gGofc2Rh/94-grilling-the-device-data-model-and-where-dismissal-lives) → §2–§6
 - [Grilling: the CAPABILITY wire change for the device serial](https://trello.com/c/UWfzOo1k/95-grilling-the-capability-wire-change-for-the-device-serial) → §7
 - [Prototype: the profile page and the registration moment](https://trello.com/c/SMvESq0e/96-prototype-the-profile-page-and-the-registration-moment) → §8, amending §3.1
+- [Grilling: threading the serial from the link to the registration prompt](https://trello.com/c/6mAXmow0/97-grilling-threading-the-serial-from-the-link-to-the-registration-prompt)
+  → §10, amending §5, §7.2 and §8.5, and adding an ordering rule to §3.3
 
 **Scope:** the web app's profile section — a preset avatar, a private list of registered devices, and
 registering a pair of ears after a Web Bluetooth connect.
@@ -190,6 +192,11 @@ nagging that dismissal exists to stop.
 
 This is why the store is a module rather than two inline `setItem` calls.
 
+**The dismissal is written before the row leaves the client store, and the order is load-bearing**
+(§10.4). The prompt is derived from the device list, so removing the row flips the verdict to
+"unregistered" in the same frame — without the key already written, forgetting a connected pair does
+not merely re-offer registration later, it reopens the modal immediately.
+
 Accepted asymmetry: a server action writing client state means forgetting on your phone leaves your
 laptop still prompting. That is the price of §3, not a new cost, and it is the same shape as "a new
 browser re-prompts".
@@ -223,12 +230,12 @@ refetched.
 `devices.list | register | rename | forget`, all `authedProcedure`. Every one is addressed by
 `{ serial }`; **the owner comes from the session and never from input.**
 
-| Procedure  | Input              | Notes                                                                                                                                                      |
-| ---------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list`     | —                  | Ordered by `name` ascending, `createdAt` as tie-break (names are not unique).                                                                              |
-| `register` | `{ serial, name }` | Already-registered serial → `CONFLICT`. The cached list means the UI should not offer it, so reaching this is a bug worth surfacing rather than absorbing. |
-| `rename`   | `{ serial, name }` |                                                                                                                                                            |
-| `forget`   | `{ serial }`       | See §3.3 — the client also writes the dismissal key.                                                                                                       |
+| Procedure  | Input              | Notes                                                                                                                                                                                                                                       |
+| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`     | —                  | Ordered by `name` ascending, `createdAt` as tie-break (names are not unique).                                                                                                                                                               |
+| `register` | `{ serial, name }` | Returns the created row. Already-registered serial → `CONFLICT`; **§10.8 amends what the client does with it** — the cache is explicitly allowed to be stale (§4), so this is reachable without a bug and self-heals rather than surfacing. |
+| `rename`   | `{ serial, name }` |                                                                                                                                                                                                                                             |
+| `forget`   | `{ serial }`       | See §3.3 — the client also writes the dismissal key.                                                                                                                                                                                        |
 
 ## 6. Account deletion reaps devices
 
@@ -289,8 +296,10 @@ primary key either way (§2.2).
 serial present  ⟺  payload.length >= 10  and  bytes 4..9 are not all zero
 ```
 
-`parseCapability` gains `serial: string | null` and returns **`null`**, never a string, when the
-predicate fails. This is the only place the check may live: all-zero hexes to `"000000000000"`, which
+`parseCapability` returns **no serial at all**, never a string, when the predicate fails. This section
+originally wrote that as `serial: string | null`; **§10.1 amends the return type** to a union that also
+carries _why_ there is no serial, which §7.3's two strings need and a nullable string discards. Every
+rule below is unchanged by that. This is the only place the check may live: all-zero hexes to `"000000000000"`, which
 _passes_ `/^[0-9a-f]{12}$/`, so a zero serial that escapes the parse boundary registers a phantom
 device that every failed unit in the fleet shares.
 
@@ -449,6 +458,11 @@ The chip remains a status display with one verb, and it gains no menu:
   tab only"** as its detail line, which is where a user learns there is something to do. Connected to a
   registered pair it reads the chosen name (§4), which is the payoff.
 
+**§10.5 completes this**: the chosen name is the chip's _label_ (the line §4 says currently renders
+`state.deviceName`) and "Unregistered" is its _detail_, so the two rules are about different lines and
+never compete. §10.5 also settles the case this paragraph does not cover — ears that report no serial,
+which are not "unregistered" and stay quiet.
+
 A menu remains addable later without a schema change, if the page turns out to be too far away.
 
 ### 8.6 Ears that cannot identify themselves show the row, disabled, with the reason
@@ -468,11 +482,255 @@ what goes — "Deletes your animations and your list of ears. Cannot be undone."
 
 ## 9. Not yet settled
 
-| Question                                                                                                                                                    | Card                                                                                                                            |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Threading the parsed serial from `openEarsLink` → `handshake` → connection state, now that §7 fixes what is on the wire and what `parseCapability` returns. | [Grilling: threading the serial from the link to the registration prompt](https://trello.com/c/6mAXmow0)                        |
-| Whether ADR-0001 is amended or a new ADR records the device-identity decision.                                                                              | [Grilling: where the device-identity decision is recorded](https://trello.com/c/sEJ5S38p) — blocked by the threading card above |
+| Question                                                                       | Card                                                                                                  |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Whether ADR-0001 is amended or a new ADR records the device-identity decision. | [Grilling: where the device-identity decision is recorded](https://trello.com/c/sEJ5S38p) — unblocked |
 
-These two are the whole remaining route: once both are settled, this document is the spec and the map
-is walked. The firmware _update_ story that §7.3's reason string implies is **not** on it — delivering
-OTA update is a subsystem in `robo-cat-ears`, ruled out of scope on the map.
+One question left: once it is settled, this document is the spec and the map is walked. The firmware
+_update_ story that §7.3's reason string implies is **not** on it — delivering OTA update is a subsystem
+in `robo-cat-ears`, ruled out of scope on the map.
+
+---
+
+## 10. Threading the serial to the prompt
+
+Settled on card 97. §7 fixed what is on the wire; §8 fixed that registration is a modal and a dismissal
+is a `localStorage` key. This section is the seam between them — the path `openEarsLink` → `handshake` →
+`EarsConnectionState` → chip and modal.
+
+The shape of the answer is one this codebase already has: **pure functions returning a decided verdict,
+consumed by a component's `$derived`.** `chipView` and `sendEligibility` are both that. Nothing below
+introduces a new mechanism.
+
+### 10.1 The parse keeps the cause — **this amends §7.2**
+
+```ts
+export type DeviceIdentity =
+  | { readonly kind: "serial"; readonly serial: string }
+  | { readonly kind: "pre-serial" }
+  | { readonly kind: "unidentified" };
+```
+
+`Capability` gains `identity: DeviceIdentity`. `pre-serial` is a payload shorter than ten bytes — §7.2's
+4 and its 5–9 alike; `unidentified` is ten bytes that are all zero.
+
+§7.2 wrote the return as `serial: string | null`, and that type cannot carry §7.3's promise. §7.3 gives
+two causes two different sentences, and §8.6 says the connection carries whichever applies — but by the
+time a reader holds `null`, the payload length is gone. The distinction §7.3 says the parse "already
+makes for free" was being discarded at the only place that can see it.
+
+The union also turns §7.2's central safety property from a rule into a shape: **no branch has a serial
+field to read unless the serial is real.** An all-zero record cannot leak `"000000000000"` toward a
+primary key, because the variant it produces has nowhere to put a string.
+
+Rejected: keeping `serial: string | null` and carrying the payload length beside it. Two fields that
+must be kept agreeing, and the which-sentence logic ends up outside the one function that knows.
+
+### 10.2 `identity` stays inside the record
+
+Not hoisted to a sibling field on the `connected` state.
+
+- **The connected state already has a rule for what gets hoisted, and the serial is on the other side of
+  it.** `deviceId` and `deviceName` are lifted because they come from the _link_ (`live.deviceId`,
+  `live.deviceName` — the Web Bluetooth half); `capability` is kept whole because it came from the
+  _record_. The serial arrives in the CAPABILITY frame.
+- **"Identity is a different kind of fact" does not survive inspection.** The serial is precisely what
+  `connect.ts` calls `slotCount` and `maxChunkBytes`: a per-connection fact, read from this device, that
+  a client must not hardcode and that dies with the connection. The difference is the English word
+  _capability_, not provenance or lifetime.
+- **A copy is a thing that can be wrong.** `updateSlots` already rebuilds state with a spread, and every
+  future partial update would have to keep two identity fields agreeing.
+
+Cost accepted: readers would reach through a wire-shaped type for a domain fact. §10.3 removes that need
+for all three of them.
+
+### 10.3 One resolver, one type, three readers
+
+```ts
+export type Registration =
+  | { readonly kind: "unknown" }
+  | { readonly kind: "unregisterable"; readonly reason: string }
+  | { readonly kind: "unregistered"; readonly serial: string }
+  | { readonly kind: "registered"; readonly serial: string; readonly name: string };
+
+resolveRegistration(state: EarsConnectionState, devices: readonly Device[] | null): Registration;
+```
+
+Three readers — `chipView` (§10.5), the modal (§10.4), and the profile page's register row (§8.5, §8.6)
+— and one producer.
+
+- **§7.3's two strings get exactly one implementation.** `unregisterable` carries its own sentence,
+  chosen once from `identity`. No reader switches on the cause a second time.
+- **Dismissals are deliberately not an input.** Only the modal consults the dismissal store. That makes
+  §3.1 — a dismissal silences the prompt, never the feature — structural rather than remembered: the
+  profile page _cannot_ hide its own register row on a dismissal, because it never sees one. The second
+  door cannot be closed by the key that closes the first.
+- **`me` is not an input either.** `devices.list` is an `authedProcedure` and its failure resolves to
+  `null` (§10.6), so a non-null list already means signed in. The user id is needed only to build the
+  dismissal key, which only the modal does.
+
+### 10.4 The prompt is derived, not fired
+
+`createEarsConnection` gains nothing: `connect()` does not report whether to prompt, and no component
+runs an `$effect` on the connect transition. The dialog renders when the verdict says so —
+
+> prompt ⟺ `resolveRegistration(...).kind === "unregistered"` and no dismissal key for `(userId, serial)`
+
+- **Against a signal out of `connect()`:** it makes the connection depend on the logged-in user, the
+  tRPC device list and `localStorage` — the exact coupling §4 refused when it kept name resolution off
+  the connect path. The connection owns a session, not components.
+- **Against an `$effect` on the transition:** an effect fires once, at connect, and the verdict's inputs
+  need not all be ready at that instant. It would have to sequence itself against a pending fetch or
+  re-fire, putting a race inside the moment. A derived value becomes true when its inputs agree,
+  whenever that is, and is a pure function under test.
+
+**Closing is then free in every direction, and that is the point.** Save pushes the row into the store,
+dismissal writes the key, a disconnect drops the connected state — each flips the verdict. Nothing ever
+writes `open = false`, so no dialog can be left open against a connection that is gone.
+
+The corollary has to be said out loud, because it is the one way to get this wrong: **a closing gesture
+that writes nothing cannot close the dialog.** Esc and the backdrop therefore write the dismissal key,
+exactly as "Not now" does. The modal has two outcomes and every gesture maps to one of them.
+
+Accepted: Esc is a permanent answer for that pair rather than a "later". §8.5's register row is the
+second door, and the chip (§10.5) names the situation in the meantime.
+
+`connection.svelte.ts` loses `get view()`. Its only caller is the chip component, and keeping it would
+drag the device list into the connection object. The component composes instead —
+`chipView(ears.state, registration)`, the shape `sendEligibility(state, animation)` already uses.
+
+### 10.5 What the chip says — **this completes §8.5**
+
+| Registration     | Label                 | Detail                              |
+| ---------------- | --------------------- | ----------------------------------- |
+| `registered`     | the chosen name       | `2 of 8 slots used · this tab only` |
+| `unregistered`   | advertised model name | `Unregistered · this tab only`      |
+| `unregisterable` | advertised model name | `2 of 8 slots used · this tab only` |
+| `unknown`        | advertised model name | `2 of 8 slots used · this tab only` |
+
+§4's name is the **label** — the line that currently renders `state.deviceName` — and §8.5's
+"Unregistered" is the **detail**. Different lines; they never compete.
+
+**"Unregistered" displaces the slot summary rather than joining it.** The chip is `max-w-56` with the
+detail clamped to two lines, so there is no third segment to be had. At that moment the more useful
+sentence is the one naming something to do, and it is self-limiting — it goes as soon as the user
+answers, either way. The slot count remains where it is operationally needed: the send dialog, which
+shows the whole grid.
+
+**Ears that report no serial are not labelled "Unregistered".** That line is a prod toward an action,
+and for these ears there is no action — they cannot be registered at all (§3.2). The explanation belongs
+where there is room for a sentence, which §8.6 already decided is the profile page's disabled row, not a
+global control nagging about a locked door. The chip treats "cannot be registered" as an ordinary
+connection.
+
+The result is the property worth keeping: **the chip says "Unregistered" only when acting on it would
+work.** `unregisterable` and `unknown` are byte-identical to the chip as it ships today, which is also
+what stops a failed fetch (§10.6) from lying.
+
+### 10.6 The list is fetched at layout load, and `null` means unknown
+
+`devices.list` joins `users.me` in `apps/web/src/routes/+layout.server.ts` — the same authed batch, one
+HTTP request via `httpBatchLink`, seeded into a client store on hydration.
+
+**There is then no timing gap on the connect path at all.** A connect needs a click, a click needs a
+rendered page, and the layout load finishes before anything renders, so the list is always present
+before the chip can be pressed. §4's "a cache has the answer before the handshake finishes" is an
+argument for pre-loading; fetching at connect or on demand reintroduces the in-flight question a few
+milliseconds later. The cost is a prefix scan of the primary key (§2.1) for a handful of rows, on a load
+that does not re-run on client-side navigation.
+
+**The gap that does exist is failure, not latency**, and `me` already sets the precedent with its
+`try { … } catch { me = null }`. So the store holds:
+
+```ts
+Device[] | null; // null: we could not find out
+```
+
+and the two are opposites rather than neighbours. Under _empty_, a connected pair is unregistered —
+prompt, and say so on the chip. Under _unknown_, doing that nags someone about ears they named months
+ago and tells them it is not registered. `null` therefore resolves to `Registration.unknown`: no prompt,
+advertised name, today's chip. **A failed fetch degrades to the app as it already ships**, which is a
+state known to work. Signed out takes the same branch, for the reasons in §10.7.
+
+The store is module-level `$state` in `lib/devices/store.svelte.ts`, seeded from layout data and mutated
+in place by `register`, `rename` and `forget` — §4's "one store, several readers". `invalidateAll()` is
+not used anywhere: it would put a server round trip between Save and the dialog closing. The one refetch
+in this design is §10.8's.
+
+### 10.7 Signed out, the chip is silent
+
+No prompt, and nothing said about signing in. Connecting to ears is genuinely a signed-out capability —
+the entire BLE surface works without an account — and the chip is a connection status display, not a
+place to acquire accounts.
+
+It would also be a worse nag than the ones already rejected. Acting on it costs an auth round trip that
+destroys the connection the user just made, because the connection does not survive a reload (§2.4): the
+chip would be advertising an action that undoes itself.
+
+Structurally, silence lets signed-out and fetch-failed share one branch, and neither can produce a false
+"Unregistered".
+
+### 10.8 The modal is pinned to its pair, and what Save does — **this amends §5**
+
+**Mounted under `{#if prompt}`, not always-mounted behind an `open` prop.** A pair swap always passes
+through `disconnected`, because `connect()` early-returns unless the status is disconnected — so
+conditional mounting means a new pair always gets a fresh input. The correctness property comes from the
+structure rather than from keying and remembering to; there is no animation or state worth preserving
+across a disconnect.
+
+**The serial is captured at press time** from the verdict and carried in the mutation payload — never
+re-read from the connection when the call resolves, by which point the connected state may be gone. This
+is the serial's analogue of `updateSlots`'s `deviceId` guard: the value shown to the user is the value
+written.
+
+**A disconnect mid-save does not cancel the registration.** The user answered the question, and the row
+is theirs whether or not the ears are still powered on. Registration is about a device someone owns, not
+about a session.
+
+`register` returns the created row and the client pushes it into the store. Constructing the row
+client-side would mean inventing `createdAt`, which §8.3's **registered** column displays; refetching the
+list would be a second round trip for a row just written.
+
+**`CONFLICT` self-heals — this is the amendment to §5.** §5 reasoned that the cached list makes an
+already-registered serial unreachable, so reaching it is a bug worth surfacing. But §4 explicitly accepts
+a stale cache, and that makes it reachable with no bug at all: register a pair on your phone, leave a
+laptop tab open, connect, get prompted, press Save. It also interacts badly with §10.4 — an inline error
+leaves the dialog **permanently stuck**, because the local list still lacks the row so the verdict stays
+true.
+
+So `CONFLICT` refetches `devices.list`. The refetched list contains the row, the verdict flips, the
+dialog closes, and the chip shows the name chosen on the other device — which is the right thing to
+show, because the user's intent was already satisfied elsewhere and nothing was lost.
+
+Cost accepted: a genuine client bug that double-registered would be invisible, and there is no client
+error reporting to catch it (`lib/analytics/` is Cloudflare page analytics only). What makes that
+acceptable is that the failure is idempotent in effect — the row exists, correctly named, owned by the
+right user.
+
+Every other failure needs no handling. The list is unchanged, so the verdict stays true, so the dialog
+stays open by itself; an inline message with Save re-enabled is the whole requirement.
+
+### 10.9 Where the code lives
+
+A new `apps/web/src/lib/devices/`: `dismissed.ts` (§3), `registration.ts` (§10.3), `store.svelte.ts`
+(§10.6), and `components/device-registration-dialog/`. §3 asks for the dismissal wrapper to sit beside
+`theme.ts` / `timeline-height.ts` / `draft.ts`, and those live in feature directories.
+
+`lib/ears/` keeps owning the radio and the bytes — the half testable without a radio — and does not grow
+a tRPC-backed store or a `localStorage` wrapper.
+
+**`Registration` is defined in `lib/devices/registration.ts`, and `chip.ts` imports it**, so the
+dependency runs one way: `ears → devices`. Defining it in `lib/ears/` would make the two directories
+mutually dependent. The direction matches `eligibility.ts`, which already imports the connection state
+rather than being imported by it.
+
+### 10.10 The `deviceId` boundary holds
+
+Confirmed by audit, as §7.5 requires. `device.id` originates once, at `web-bluetooth.ts:80`, flows link →
+session → connected state, and is read in exactly one guard, `connection.svelte.ts:76`. Nothing else
+keys on it.
+
+The serial is used for three things and no others: the `Device` row key (§2.1), the dismissal key (§3),
+and matching a connection against the cached list (§10.3). It never reaches `updateSlots` and never tags
+the slot cache. **The two identifiers do not meet**, so §7.5's correction — the client's stable device
+identifier is `device.id`, and the serial is not it — still needs no code change.
