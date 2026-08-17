@@ -12,8 +12,18 @@
     atAnimationCap,
     nearAnimationCap,
   } from "$lib/quota";
+  // PROTOTYPE — throwaway, prototype/profile-and-registration. Remove with the branch.
+  import { page } from "$app/state";
+  import PrototypeSwitcher from "$lib/components/PROTOTYPE-switcher/PrototypeSwitcher.svelte";
+  import VariantA from "./PROTOTYPE-VariantA.svelte";
+  import VariantB from "./PROTOTYPE-VariantB.svelte";
+  import VariantC from "./PROTOTYPE-VariantC.svelte";
 
   let { data } = $props();
+
+  const variant = $derived(page.url.searchParams.get("variant") ?? "A");
+  // A's profile is a page of its own; the param stands in for a real /settings route
+  const pane = $derived(page.url.searchParams.get("pane") ?? "animations");
 
   // the list is one filtered page, so the cap counter comes from the quota query
   const owned = $derived(data.quota.count);
@@ -25,8 +35,10 @@
     "inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200";
 </script>
 
-<main class="px-4 py-10">
-  <div class="mx-auto max-w-3xl space-y-6">
+<!-- PROTOTYPE — throwaway. The real page body becomes a snippet so B and C can
+     mount it inside their own structure and be judged at real density. -->
+{#snippet animations()}
+  <div class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">My animations</h1>
       <div class="flex items-center gap-3">
@@ -119,4 +131,23 @@
       />
     {/if}
   </div>
-</main>
+{/snippet}
+
+{#if variant === "A"}
+  {#if pane === "profile"}
+    <main><VariantA /></main>
+  {:else}
+    <main class="px-4 py-10">
+      <div class="mx-auto max-w-3xl">{@render animations()}</div>
+    </main>
+  {/if}
+{:else if variant === "B"}
+  <main><VariantB {animations} /></main>
+{:else}
+  <main><VariantC {animations} /></main>
+{/if}
+
+<PrototypeSwitcher
+  variants={["A", "B", "C"]}
+  names={{ A: "Settings page", B: "Tabs on /my", C: "Profile hub" }}
+/>

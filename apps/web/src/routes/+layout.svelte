@@ -4,10 +4,25 @@
   import favicon from "$lib/assets/favicon.svg";
   import logo from "$lib/assets/milk-lab-logo.svg";
   import { setAccessToken } from "$lib/trpc";
-  import EarsChip from "$lib/components/ears-chip/EarsChip.svelte";
   import ThemeToggle from "$lib/components/theme-toggle/ThemeToggle.svelte";
+  // PROTOTYPE — throwaway, prototype/profile-and-registration. The real chip is
+  // replaced by a fake one per variant: the chip's shape is half the question
+  // (spec §7), and Web Bluetooth cannot run under WSL2 anyway.
+  import { page } from "$app/state";
+  import Avatar from "$lib/profile/PROTOTYPE-Avatar.svelte";
+  import ChipA from "$lib/profile/PROTOTYPE-ChipA.svelte";
+  import ChipB from "$lib/profile/PROTOTYPE-ChipB.svelte";
+  import ChipC from "$lib/profile/PROTOTYPE-ChipC.svelte";
+  import { proto } from "$lib/profile/PROTOTYPE-profile.svelte";
+  import { avatarOf } from "$lib/profile/PROTOTYPE-avatars";
 
   let { data, children } = $props();
+
+  const variant = $derived(page.url.searchParams.get("variant") ?? "A");
+  // PROTOTYPE — a variant in the URL stands in for a session, so the prototype
+  // runs on the dev server without Cognito.
+  const signedIn = $derived(Boolean(data.me) || page.url.searchParams.has("variant"));
+  const avatarKey = $derived(avatarOf(proto.avatar, proto.userId));
 
   // hand the server-minted access token to the in-memory browser client
   $effect(() => {
@@ -41,17 +56,50 @@
         <a href={resolve("/")} class="text-sm text-gray-600 hover:underline dark:text-gray-400"
           >Gallery</a
         >
-        {#if data.me}
-          <a href={resolve("/my")} class="text-sm text-gray-600 hover:underline dark:text-gray-400"
-            >My animations</a
+        {#if signedIn}
+          <!-- PROTOTYPE — the nav label follows the variant: B and C absorb the
+               profile into /my, A keeps /my as the animations list. -->
+          <a
+            href={`${resolve("/my")}?variant=${variant}`}
+            class="text-sm text-gray-600 hover:underline dark:text-gray-400"
           >
+            {variant === "A" ? "My animations" : "My stuff"}
+          </a>
         {/if}
       </div>
       <div class="flex items-center gap-3">
-        <EarsChip />
+        {#if variant === "A"}
+          <ChipA />
+        {:else if variant === "B"}
+          <ChipB />
+        {:else}
+          <ChipC />
+        {/if}
         <ThemeToggle />
-        {#if data.me}
-          <span class="text-sm text-gray-600 dark:text-gray-400">{data.me.displayName}</span>
+        {#if signedIn}
+          <!-- PROTOTYPE — how you reach the profile, per variant: A hangs it off
+               the name (a settings page), B off a tab, C off the avatar. -->
+          {#if variant === "A"}
+            <a
+              href={`${resolve("/my")}?variant=A&pane=profile`}
+              class="flex items-center gap-2 text-sm text-gray-600 hover:underline dark:text-gray-400"
+            >
+              <Avatar preset={avatarKey} size="size-6" />
+              {proto.displayName}
+            </a>
+          {:else if variant === "B"}
+            <a
+              href={`${resolve("/my")}?variant=B&tab=profile`}
+              class="flex items-center gap-2 text-sm"
+            >
+              <Avatar preset={avatarKey} size="size-6" />
+              <span class="text-gray-600 dark:text-gray-400">{proto.displayName}</span>
+            </a>
+          {:else}
+            <a href={`${resolve("/my")}?variant=C`} aria-label="Profile">
+              <Avatar preset={avatarKey} size="size-8" />
+            </a>
+          {/if}
           <form method="POST" action="/auth/logout">
             <button class="text-sm text-gray-600 hover:underline dark:text-gray-400"
               >Sign out</button
