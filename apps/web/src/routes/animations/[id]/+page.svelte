@@ -15,6 +15,7 @@
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
   import EarsSendDialog from "$lib/components/ears-send-dialog/EarsSendDialog.svelte";
   import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
+  import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
 
   let { data } = $props();
   const animation = $derived(data.animation);
@@ -150,9 +151,14 @@
           {/if}
         </div>
       </div>
-      <p class="text-sm text-gray-600 dark:text-gray-400">
-        by {animation.owner?.displayName ?? "unknown"} · {animation.robot?.name} ·
-        {(animation.durationMs / 1000).toFixed(1)}s · {animation.keyframeCount} keyframes
+      <p class="flex flex-wrap items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+        {#if animation.owner}
+          <UserAvatar userId={animation.owner.id} avatar={animation.owner.avatar} size="size-5" />
+        {/if}
+        <span>
+          by {animation.owner?.displayName ?? "unknown"} · {animation.robot?.name} ·
+          {(animation.durationMs / 1000).toFixed(1)}s · {animation.keyframeCount} keyframes
+        </span>
       </p>
       <RemixAttribution provenance={animation} />
       {#if animation.description}

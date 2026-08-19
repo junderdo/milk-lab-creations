@@ -9,6 +9,7 @@ export interface UserRow {
   id: string;
   email: string;
   displayName: string;
+  avatar?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -155,7 +156,9 @@ export class FakeDb {
     const owner = this.users.find((u) => u.id === row.ownerId);
     return {
       ...row,
-      owner: owner ? { id: owner.id, displayName: owner.displayName } : null,
+      owner: owner
+        ? { id: owner.id, displayName: owner.displayName, avatar: owner.avatar ?? null }
+        : null,
       robot: robot ? { slug: robot.slug, name: robot.name } : null,
     };
   }

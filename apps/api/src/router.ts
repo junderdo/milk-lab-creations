@@ -7,6 +7,7 @@ import {
   pageWindow,
   type ListScope,
 } from "./animation-list.ts";
+import { AVATAR_PRESETS, presetToken } from "./avatar.ts";
 import type { Context } from "./context.ts";
 import { withOccRetry } from "./occ.ts";
 import { DESCRIPTION_MAX, MAX_ANIMATIONS_PER_USER, NAME_MAX } from "./limits.ts";
@@ -73,7 +74,8 @@ function validatePayload(robotSlug: string, payload: unknown): AnimationPayload 
 }
 
 const ownerRobotSelect = {
-  owner: { select: { id: true, displayName: true } },
+  // the avatar renders wherever displayName does, so it is public data
+  owner: { select: { id: true, displayName: true, avatar: true } },
   robot: { select: { slug: true, name: true } },
 } as const;
 
@@ -193,6 +195,18 @@ const usersRouter = router({
         ctx.db.user.update({
           where: { id: ctx.dbUser.id },
           data: { displayName: input.displayName },
+        }),
+      ),
+    ),
+
+  /** The client sends a bare key; the prefix that makes it a token is ours. */
+  setAvatar: authedProcedure
+    .input(z.object({ preset: z.enum(AVATAR_PRESETS) }))
+    .mutation(({ ctx, input }) =>
+      withOccRetry(() =>
+        ctx.db.user.update({
+          where: { id: ctx.dbUser.id },
+          data: { avatar: presetToken(input.preset) },
         }),
       ),
     ),

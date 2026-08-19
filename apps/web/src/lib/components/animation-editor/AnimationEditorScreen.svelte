@@ -31,7 +31,7 @@
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
   import type { ViewerEditing } from "$lib/components/animation-viewer/editing";
   import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
-  import EditorDialog from "./EditorDialog.svelte";
+  import ConfirmDialog from "$lib/components/confirm-dialog/ConfirmDialog.svelte";
   import type { RemixProvenance } from "$lib/animation/remix";
   import {
     createInputFor,
@@ -826,7 +826,7 @@
     copy does not. Restoring a stale draft is still allowed: what it collides
     with is settled at save time by the conflict dialog below, not here.
   -->
-  <EditorDialog
+  <ConfirmDialog
     title="You have unsaved changes from {humanizedSince(draftOffer.draft.savedAt)}"
     confirm={{ label: "Restore draft", onclick: restoreDraft }}
     dismiss={{ label: "Discard draft", onclick: discardDraft }}
@@ -836,7 +836,7 @@
       This animation has been changed elsewhere since then, so restoring may bring back work that is
       out of date — you will be asked again when you save.
     {/if}
-  </EditorDialog>
+  </ConfirmDialog>
 {/if}
 
 {#if editor.conflict !== null}
@@ -845,7 +845,7 @@
     hand, so "load newest" needs no refetch — and the realistic blast radius is
     one person in two tabs.
   -->
-  <EditorDialog
+  <ConfirmDialog
     title="This animation was changed elsewhere"
     confirm={{ label: "Overwrite", onclick: () => void overwrite() }}
     dismiss={{ label: "Discard mine, load newest", onclick: discardMine }}
@@ -853,29 +853,29 @@
     Probably another tab or device. Saving now would overwrite
     <b class="font-medium">{editor.conflict.name}</b>, saved
     {editor.conflict.updatedAt.toLocaleString()}.
-  </EditorDialog>
+  </ConfirmDialog>
 {/if}
 
 {#if pendingVisibility !== null}
   <!-- Reach and nothing else: the document is not mentioned, not sent, and not
        affected either way this is answered. -->
   {@const prompt = visibilityPrompt(pendingVisibility)}
-  <EditorDialog
+  <ConfirmDialog
     title={prompt.title}
     confirm={{ label: prompt.confirmLabel, onclick: () => void applyVisibility() }}
     dismiss={{ label: "Cancel", onclick: () => (pendingVisibility = null) }}
   >
     {prompt.body}
-  </EditorDialog>
+  </ConfirmDialog>
 {/if}
 
 {#if leaveTarget !== null}
-  <EditorDialog
+  <ConfirmDialog
     title="You have unsaved changes"
     confirm={{ label: "Stay", onclick: () => (leaveTarget = null) }}
     dismiss={{ label: "Leave", onclick: leaveAnyway }}
   >
     They are kept as a draft on this device, so you can pick them up here again — but they have not
     been saved.
-  </EditorDialog>
+  </ConfirmDialog>
 {/if}

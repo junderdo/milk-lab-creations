@@ -4,6 +4,7 @@
   import AnimationCard from "$lib/components/animation-card/AnimationCard.svelte";
   import AnimationFilters from "$lib/components/animation-list/AnimationFilters.svelte";
   import ListPagination from "$lib/components/animation-list/ListPagination.svelte";
+  import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
 
   let { data } = $props();
 
@@ -41,7 +42,10 @@
               keyframeCount={item.keyframeCount}
             >
               {#snippet byline()}
-                <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">
+                <span class="ml-2 inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                  {#if item.owner}
+                    <UserAvatar userId={item.owner.id} avatar={item.owner.avatar} size="size-5" />
+                  {/if}
                   by {item.owner?.displayName ?? "unknown"} · {item.robot?.name}
                 </span>
               {/snippet}
