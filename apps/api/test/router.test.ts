@@ -3,7 +3,14 @@ import type { AVATAR_PRESETS } from "../src/avatar.ts";
 import { MAX_ANIMATIONS_PER_USER } from "../src/limits.ts";
 import { packWireFormat, type AnimationPayload } from "../src/payload.ts";
 import { appRouter, type Visibility } from "../src/router.ts";
-import { makeAnimationRow, makeContext, ROBO_CAT_EARS, uuid, validPayload } from "./helpers.ts";
+import {
+  makeAnimationRow,
+  makeContext,
+  ROBO_CAT_EARS,
+  uuid,
+  validPayload,
+  type DeviceRow,
+} from "./helpers.ts";
 
 const SUB = "11111111-1111-4111-8111-111111111111";
 const OTHER_SUB = "22222222-2222-4222-8222-222222222222";
@@ -811,5 +818,138 @@ describe("remix provenance on byId", () => {
 
     const read = await callerFor(ctx).animations.byId({ id: fork.id });
     expect(read.remixedFrom).toEqual({ id: source.id, name: "Mine" });
+  });
+});
+
+describe("devices", () => {
+  const SERIAL = "0a1b2c3d4e5f";
+  const OTHER_SERIAL = "ffeeddccbbaa";
+
+  function seedDevice(ctx: ReturnType<typeof makeContext>, row: Partial<DeviceRow>) {
+    ctx.fake.devices.push({
+      ownerId: SUB,
+      serial: SERIAL,
+      name: "Everyday",
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+      ...row,
+    });
+  }
+
+  it("registers a pair and lists it back", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const created = await callerFor(ctx).devices.register({ serial: SERIAL, name: "Studio ears" });
+
+    expect(created).toMatchObject({ ownerId: SUB, serial: SERIAL, name: "Studio ears" });
+    expect(await callerFor(ctx).devices.list()).toMatchObject([{ serial: SERIAL }]);
+  });
+
+  it("orders by name, then by when they were registered", async () => {
+    const ctx = makeContext({ sub: SUB });
+    seedDevice(ctx, { serial: "aaaaaaaaaaaa", name: "Spares", createdAt: new Date(3) });
+    seedDevice(ctx, { serial: "bbbbbbbbbbbb", name: "Everyday", createdAt: new Date(2) });
+    seedDevice(ctx, { serial: "cccccccccccc", name: "Everyday", createdAt: new Date(1) });
+
+    const listed = await callerFor(ctx).devices.list();
+    expect(listed.map((d) => d.serial)).toEqual([
+      "cccccccccccc",
+      "bbbbbbbbbbbb",
+      "aaaaaaaaaaaa",
+    ]);
+  });
+
+  it("lists only the caller's own rows", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    await callerFor(ctx).devices.register({ serial: SERIAL, name: "Mine" });
+    await callerFor(otherCtx).devices.register({ serial: OTHER_SERIAL, name: "Theirs" });
+
+    expect(await callerFor(ctx).devices.list()).toMatchObject([{ name: "Mine" }]);
+  });
+
+  // the owner is half the key, so a resold pair is two rows, not a collision
+  it("lets two people register the same serial", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    await callerFor(ctx).devices.register({ serial: SERIAL, name: "Sold" });
+
+    await expect(
+      callerFor(otherCtx).devices.register({ serial: SERIAL, name: "Bought" }),
+    ).resolves.toMatchObject({ ownerId: OTHER_SUB });
+  });
+
+  it("rejects a second registration of the caller's own serial", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await callerFor(ctx).devices.register({ serial: SERIAL, name: "Everyday" });
+
+    await expect(
+      callerFor(ctx).devices.register({ serial: SERIAL, name: "Everyday again" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it.each([
+    ["uppercase hex", "0A1B2C3D4E5F"],
+    ["too short", "0a1b2c3d4e5"],
+    ["too long", "0a1b2c3d4e5f0"],
+    ["not hex", "0a1b2c3d4e5g"],
+  ])("rejects a serial that is %s", async (_case, serial) => {
+    const ctx = makeContext({ sub: SUB });
+    await expect(callerFor(ctx).devices.register({ serial, name: "Nope" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("requires a name", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await expect(
+      callerFor(ctx).devices.register({ serial: SERIAL, name: "   " }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("renames a pair", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await callerFor(ctx).devices.register({ serial: SERIAL, name: "Ears" });
+
+    const renamed = await callerFor(ctx).devices.rename({ serial: SERIAL, name: "Studio ears" });
+    expect(renamed.name).toBe("Studio ears");
+  });
+
+  it("cannot rename or forget someone else's pair", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    await callerFor(ctx).devices.register({ serial: SERIAL, name: "Mine" });
+    await callerFor(otherCtx).devices.list(); // provisions the other user
+
+    await expect(
+      callerFor(otherCtx).devices.rename({ serial: SERIAL, name: "Stolen" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(callerFor(otherCtx).devices.forget({ serial: SERIAL })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(ctx.fake.devices).toMatchObject([{ ownerId: SUB, name: "Mine" }]);
+  });
+
+  it("forgets a pair", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await callerFor(ctx).devices.register({ serial: SERIAL, name: "Ears" });
+
+    expect(await callerFor(ctx).devices.forget({ serial: SERIAL })).toEqual({ deleted: true });
+    expect(ctx.fake.devices).toHaveLength(0);
+  });
+
+  it("is closed to anonymous callers", async () => {
+    const ctx = makeContext();
+    await expect(callerFor(ctx).devices.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("account deletion reaps the caller's devices and no one else's", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const otherCtx = makeContext({ db: ctx.fake, sub: OTHER_SUB });
+    await callerFor(ctx).devices.register({ serial: SERIAL, name: "Mine" });
+    await callerFor(otherCtx).devices.register({ serial: SERIAL, name: "Theirs" });
+
+    await callerFor(ctx).users.deleteAccount();
+
+    expect(ctx.fake.devices).toMatchObject([{ ownerId: OTHER_SUB }]);
   });
 });
