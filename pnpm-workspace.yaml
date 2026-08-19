@@ -1,6 +1,9 @@
 packages:
   - "apps/*"
   - "packages/*"
+# prisma 7.9.1 still pins deepmerge-ts 7.x (GHSA-ggr8-5vv4-36mx); drop when it ships 8.x
+overrides:
+  deepmerge-ts@<8.0.0: ^8.0.1
 allowBuilds:
   '@prisma/engines': true
   aws-sdk: false
