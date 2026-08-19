@@ -32,6 +32,14 @@ export const MAX_TIME_MS = 65535;
  */
 export const MAX_ANIMATIONS_PER_USER = 30;
 
+/**
+ * A device serial is 12 lowercase hex characters — the first six bytes of the
+ * derivation in `docs/adr/0002-how-a-pair-of-ears-is-identified.md`. Uppercase
+ * is rejected at the boundary rather than normalized; a client that receives a
+ * hex string normalizes before the schema sees it.
+ */
+export const SERIAL_HEX_CHARS = 12;
+
 /** Animation name: trimmed, 1–100 characters. */
 export const NAME_MAX = 100;
 
