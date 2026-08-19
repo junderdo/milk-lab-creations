@@ -19,18 +19,14 @@ import { NAME_MAX } from "@milklab/api/limits";
 export type NameCommit =
   | { kind: "unchanged" }
   | { kind: "invalid"; message: string }
-  | { kind: "save"; displayName: string };
+  | { kind: "save"; name: string };
 
 export function commitName(draft: string, current: string, subject: string): NameCommit {
-  const displayName = draft.trim();
-  if (displayName.length === 0) return { kind: "invalid", message: `${subject} can't be empty.` };
-  if (displayName.length > NAME_MAX) {
+  const name = draft.trim();
+  if (name.length === 0) return { kind: "invalid", message: `${subject} can't be empty.` };
+  if (name.length > NAME_MAX) {
     return { kind: "invalid", message: `${subject} can be at most ${NAME_MAX} characters.` };
   }
-  if (displayName === current) return { kind: "unchanged" };
-  return { kind: "save", displayName };
-}
-
-export function commitDisplayName(draft: string, current: string): NameCommit {
-  return commitName(draft, current, "Your name");
+  if (name === current) return { kind: "unchanged" };
+  return { kind: "save", name };
 }

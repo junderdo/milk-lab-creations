@@ -9,7 +9,7 @@ import {
 } from "./animation-list.ts";
 import { AVATAR_PRESETS, presetToken } from "./avatar.ts";
 import type { Context } from "./context.ts";
-import { withOccRetry } from "./occ.ts";
+import { hasErrorCode, UNIQUE_VIOLATION_CODES, withOccRetry } from "./occ.ts";
 import {
   DESCRIPTION_MAX,
   MAX_ANIMATIONS_PER_USER,
@@ -248,9 +248,17 @@ const usersRouter = router({
 /**
  * Every device procedure is addressed by `{ serial }` and takes the owner from
  * the session — the compound key means a caller cannot even name a row it does
- * not own, so there is no ownership check to forget. A serial the caller has
- * not registered is NOT_FOUND, the same rule reads follow.
+ * not own, so ownership is not a check that can be forgotten.
  */
+/** A serial the caller has not registered is NOT_FOUND, as reads already are. */
+async function requireOwnDevice(ctx: Context, ownerId: string, serial: string) {
+  const key = { ownerId, serial };
+  if (!(await ctx.db.device.findUnique({ where: { ownerId_serial: key } }))) {
+    throw new TRPCError({ code: "NOT_FOUND" });
+  }
+  return key;
+}
+
 const devicesRouter = router({
   list: authedProcedure.query(({ ctx }) =>
     ctx.db.device.findMany({
@@ -268,16 +276,23 @@ const devicesRouter = router({
       if (await ctx.db.device.findUnique({ where: { ownerId_serial: key } })) {
         throw new TRPCError({ code: "CONFLICT", message: "already registered" });
       }
-      return withOccRetry(() => ctx.db.device.create({ data: { ...key, name: input.name } }));
+      try {
+        return await withOccRetry(() =>
+          ctx.db.device.create({ data: { ...key, name: input.name } }),
+        );
+      } catch (error) {
+        // the read above is an optimisation, not the gate: two concurrent
+        // registrations both pass it, and the client self-heals on CONFLICT
+        // alone, so the loser must not surface as a 500
+        if (!hasErrorCode(error, UNIQUE_VIOLATION_CODES)) throw error;
+        throw new TRPCError({ code: "CONFLICT", message: "already registered" });
+      }
     }),
 
   rename: authedProcedure
     .input(z.object({ serial: serialSchema, name: nameSchema }))
     .mutation(async ({ ctx, input }) => {
-      const key = { ownerId: ctx.dbUser.id, serial: input.serial };
-      if (!(await ctx.db.device.findUnique({ where: { ownerId_serial: key } }))) {
-        throw new TRPCError({ code: "NOT_FOUND" });
-      }
+      const key = await requireOwnDevice(ctx, ctx.dbUser.id, input.serial);
       return withOccRetry(() =>
         ctx.db.device.update({ where: { ownerId_serial: key }, data: { name: input.name } }),
       );
@@ -286,10 +301,7 @@ const devicesRouter = router({
   forget: authedProcedure
     .input(z.object({ serial: serialSchema }))
     .mutation(async ({ ctx, input }) => {
-      const key = { ownerId: ctx.dbUser.id, serial: input.serial };
-      if (!(await ctx.db.device.findUnique({ where: { ownerId_serial: key } }))) {
-        throw new TRPCError({ code: "NOT_FOUND" });
-      }
+      const key = await requireOwnDevice(ctx, ctx.dbUser.id, input.serial);
       await withOccRetry(() => ctx.db.device.delete({ where: { ownerId_serial: key } }));
       return { deleted: true };
     }),
