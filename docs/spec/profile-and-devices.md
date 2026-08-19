@@ -258,9 +258,9 @@ would justify it.**
 
 Settled on card 95. **The wire contract is owned by `robo-cat-ears/docs/ble-protocol.md`**, which names
 itself the contract between the three repositories, and the identity semantics are owned by
-[ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md). The appended field is not yet written into
-the protocol doc — it lands with the firmware change. This section is the client's half: what the web
-app parses, and what it shows when there is nothing to parse.
+[ADR-0002](../adr/0002-how-a-pair-of-ears-is-identified.md). The appended field is documented in that
+repository's §8 and §8.1. This section is the client's half: what the web app parses, and what it shows
+when there is nothing to parse.
 
 ### 7.1 The record grows by six bytes, and the version does not move
 
@@ -474,9 +474,10 @@ Two things the map deliberately leaves undone:
 
 - **The firmware _update_ story that §7.3's reason string implies does not exist.** Delivering OTA
   update is a subsystem in `robo-cat-ears`, ruled out of scope on the map.
-- **The six appended bytes are not yet in `robo-cat-ears/docs/ble-protocol.md` §8.** That repo is the
-  owner of record for the wire contract; the field lands there with the firmware change, carrying a
-  copy of ADR-0002's freeze warning.
+- **The firmware does not emit the serial yet.** The wire contract is written — `ble-protocol.md` §8
+  and §8.1 document the record, the reserved all-zero value and the freeze — but §11.8 of that document
+  is a specification for code nobody has written. Until it is, every pair of ears reports the 4-byte
+  pre-serial record, and §7.3's reason string is what every user sees.
 
 ---
 
