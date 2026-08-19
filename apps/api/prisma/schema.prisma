@@ -16,6 +16,10 @@ model User {
   id          String      @id @db.Uuid // Cognito sub, JIT-upserted
   email       String
   displayName String      @map("display_name")
+  // Prefixed token, e.g. `preset:cat-01`. Nullable forever — DSQL has no
+  // `SET NOT NULL` — and NULL means "not chosen", resolved to a preset from
+  // the user id at the boundary, never stored.
+  avatar      String?
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz()
   animations  Animation[]

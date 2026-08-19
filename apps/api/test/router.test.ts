@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { AVATAR_PRESETS } from "../src/avatar.ts";
 import { MAX_ANIMATIONS_PER_USER } from "../src/limits.ts";
 import { packWireFormat, type AnimationPayload } from "../src/payload.ts";
 import { appRouter, type Visibility } from "../src/router.ts";
@@ -91,6 +92,31 @@ describe("auth & JIT provisioning", () => {
     const ctx = makeContext({ sub: SUB });
     const updated = await callerFor(ctx).users.updateDisplayName({ displayName: "Cat Herder" });
     expect(updated.displayName).toBe("Cat Herder");
+  });
+
+  it("starts every user with no avatar chosen", async () => {
+    const me = await callerFor(makeContext({ sub: SUB })).users.me();
+    expect(me.avatar ?? null).toBeNull();
+  });
+
+  it("stores a chosen preset with the prefix the client never sends", async () => {
+    const ctx = makeContext({ sub: SUB });
+    const updated = await callerFor(ctx).users.setAvatar({ preset: "cat-03" });
+    expect(updated.avatar).toBe("preset:cat-03");
+  });
+
+  it("refuses a preset outside the closed set", async () => {
+    const caller = callerFor(makeContext({ sub: SUB }));
+    await expect(
+      caller.users.setAvatar({ preset: "cat-99" as (typeof AVATAR_PRESETS)[number] }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("refuses a token the client tried to author itself", async () => {
+    const caller = callerFor(makeContext({ sub: SUB }));
+    await expect(
+      caller.users.setAvatar({ preset: "preset:cat-01" as (typeof AVATAR_PRESETS)[number] }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });
 
@@ -247,6 +273,15 @@ describe("visibility", () => {
       owner: { displayName: "Jeff" },
       robot: { slug: "robo-cat-ears" },
     });
+  });
+
+  it("carries the owner's avatar on a byline, since it renders beside the name", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await callerFor(ctx).users.setAvatar({ preset: "cat-05" });
+    await seedAnimation(ctx, { name: "Public one", visibility: "public" });
+
+    const { items } = await callerFor(makeContext({ db: ctx.fake })).animations.gallery();
+    expect(items[0]).toMatchObject({ owner: { avatar: "preset:cat-05" } });
   });
 
   it("filters the gallery by robot slug", async () => {

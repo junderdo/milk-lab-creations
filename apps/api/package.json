@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./avatar": "./src/avatar.ts",
     "./limits": "./src/limits.ts",
     "./list": "./src/animation-list.ts",
     "./wire-format": "./src/wire-format.ts"

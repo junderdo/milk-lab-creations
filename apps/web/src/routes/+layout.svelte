@@ -6,6 +6,7 @@
   import { setAccessToken } from "$lib/trpc";
   import EarsChip from "$lib/components/ears-chip/EarsChip.svelte";
   import ThemeToggle from "$lib/components/theme-toggle/ThemeToggle.svelte";
+  import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
 
   let { data, children } = $props();
 
@@ -51,7 +52,13 @@
         <EarsChip />
         <ThemeToggle />
         {#if data.me}
-          <span class="text-sm text-gray-600 dark:text-gray-400">{data.me.displayName}</span>
+          <a
+            href={resolve("/profile")}
+            class="flex items-center gap-2 text-sm text-gray-600 hover:underline dark:text-gray-400"
+          >
+            <UserAvatar userId={data.me.id} avatar={data.me.avatar} />
+            {data.me.displayName}
+          </a>
           <form method="POST" action="/auth/logout">
             <button class="text-sm text-gray-600 hover:underline dark:text-gray-400"
               >Sign out</button

@@ -1,7 +1,8 @@
 <!--
-  The editor's blocking dialogs: a draft to restore, a conflicting save, unsaved
-  work on the way out. Each is the same shape — a title, a sentence, and exactly
-  two choices with no way past them but choosing — so the shape lives here once.
+  A blocking question: a draft to restore, a conflicting save, unsaved work on
+  the way out, an account about to go. Each is the same shape — a title, a
+  sentence, and exactly two choices with no way past them but choosing — so the
+  shape lives here once.
   `confirm` is the emphasised one, which is not always the one that acts.
 -->
 <script lang="ts">
