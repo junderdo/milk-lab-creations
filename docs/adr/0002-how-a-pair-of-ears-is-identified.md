@@ -145,10 +145,11 @@ MAC section. Design so that a duplicate is survivable, not so that a duplicate i
   `device.id`.
 - **The wire contract is owned elsewhere.** `robo-cat-ears/docs/ble-protocol.md` is the owner of record
   for the byte layout, and names itself the contract between three repositories. This ADR owns identity
-  _semantics_ — what the value means, what it promises, and what may never change about it. The
-  appended field is not yet written into that document; it lands with the firmware change, carrying a
-  copy of the freeze warning above. That duplication is deliberate: across a repository boundary the
-  reader most likely to change the hash is the one least likely to follow a link.
+  _semantics_ — what the value means, what it promises, and what may never change about it. That
+  document's §8.1 carries the layout, the reserved all-zero value and its own copy of the freeze
+  warning above, and points back here for the reasoning. The duplicated freeze is deliberate: across a
+  repository boundary the reader most likely to change the hash is the one least likely to follow a
+  link.
 - **A third client is already compatible.** The watch's `onCapabilityResponse` guards on
   `_rx_length < 4` — a minimum, not an equality — so the append is non-breaking for all three clients
   without a change to any of them.
