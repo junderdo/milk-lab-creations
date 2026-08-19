@@ -40,6 +40,9 @@ function hashOf(value: string): number {
 
 /** The preset to draw for a user, chosen from their id when none is stored. */
 export function avatarOf(token: string | null | undefined, userId: string): AvatarPreset {
-  const chosen = token ? presetOf(token) : null;
-  return chosen ?? AVATAR_PRESETS[hashOf(userId) % AVATAR_PRESETS.length];
+  const chosen = token == null ? null : presetOf(token);
+  // the modulo is in range by construction, but the index is narrowed anyway:
+  // apps/api compiles under `noUncheckedIndexedAccess` and this module pairs
+  // with one that lives there
+  return chosen ?? AVATAR_PRESETS[hashOf(userId) % AVATAR_PRESETS.length] ?? AVATAR_PRESETS[0];
 }
