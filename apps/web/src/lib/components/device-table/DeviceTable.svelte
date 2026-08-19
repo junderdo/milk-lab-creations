@@ -8,24 +8,35 @@
   A name commits on blur, exactly as the display name above it does — the two
   fields on this page behave the same way and share the decision that says what
   a blur meant.
+
+  §8.3's "connected now" pill is not here yet: it has to match a row against the
+  live connection's serial, and no connection carries one until `parseCapability`
+  learns to (spec §10.1, the next card).
 -->
 <script lang="ts">
   import ConfirmDialog from "$lib/components/confirm-dialog/ConfirmDialog.svelte";
-  import { forgetDevice, renameDevice, type DeviceActionDeps } from "$lib/devices/actions";
+  import {
+    forgetDevice,
+    renameDevice,
+    type DeviceActionDeps,
+    type DeviceWriter,
+  } from "$lib/devices/actions";
   import { localDismissalStorage } from "$lib/devices/dismissed";
-  import { deviceStore, type Device } from "$lib/devices/store.svelte";
+  import type { Device } from "$lib/devices/store.svelte";
   import { calendarDate } from "$lib/format/calendar-date";
-  import { commitName } from "$lib/profile/display-name";
+  import { commitName } from "$lib/profile/name";
   import { trpc } from "$lib/trpc";
   import { NAME_MAX } from "@milklab/api/limits";
 
   interface Props {
     /** `null` is "we could not find out", which is not an empty list. */
     devices: Device[] | null;
+    /** Where an accepted edit goes. The owner of the list owns the writes too. */
+    writer: DeviceWriter;
     userId: string;
   }
 
-  let { devices, userId }: Props = $props();
+  let { devices, writer, userId }: Props = $props();
 
   let editing = $state<string | null>(null);
   let draft = $state("");
@@ -41,7 +52,7 @@
       rename: (input) => trpc().devices.rename.mutate(input),
       forget: (input) => trpc().devices.forget.mutate(input),
     },
-    store: deviceStore,
+    store: writer,
     storage: localDismissalStorage(),
     userId,
   });
@@ -76,7 +87,7 @@
     editing = null;
     if (decision.kind === "unchanged") return;
     try {
-      await renameDevice(deps(), device.serial, decision.displayName);
+      await renameDevice(deps(), device.serial, decision.name);
       error = null;
     } catch {
       error = "Could not rename those ears. Please try again.";
@@ -200,7 +211,7 @@
     }}
     dismiss={{ label: "Keep them", onclick: () => (forgetting = null) }}
   >
-    They leave your list and you won't be asked to register them again. Connecting still works, and
-    you can register them again from this page.
+    They leave your list and you won't be asked to register them again. Connecting to them still
+    works.
   </ConfirmDialog>
 {/if}

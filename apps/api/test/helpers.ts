@@ -216,8 +216,7 @@ export class FakeDb {
     findMany: async () => [...this.robots],
   };
 
-  // Addressed by the compound key throughout, exactly as the table is.
-  readonly device = {
+  device = {
     findUnique: async ({ where }: { where: { ownerId_serial: DeviceKey } }) =>
       this.devices.find((d) => sameDevice(d, where.ownerId_serial)) ?? null,
     findMany: async (args: { where: { ownerId: string }; orderBy?: OrderBy }) =>
@@ -226,6 +225,11 @@ export class FakeDb {
         .sort(compareBy<DeviceRow>(args.orderBy ?? [{ createdAt: "asc" }]))
         .map((d) => ({ ...d })),
     create: async ({ data }: { data: Omit<DeviceRow, "createdAt" | "updatedAt"> }) => {
+      // the primary key is enforced here, so a router that races its own
+      // pre-read still meets the error the real driver would raise
+      if (this.devices.some((d) => sameDevice(d, data))) {
+        throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      }
       const row: DeviceRow = { ...data, createdAt: new Date(), updatedAt: new Date() };
       this.devices.push(row);
       return { ...row };
@@ -243,9 +247,10 @@ export class FakeDb {
       return { ...row };
     },
     delete: async ({ where }: { where: { ownerId_serial: DeviceKey } }) => {
-      const idx = this.devices.findIndex((d) => sameDevice(d, where.ownerId_serial));
-      if (idx === -1) throw new Error("device not found");
-      return this.devices.splice(idx, 1)[0];
+      const row = this.devices.find((d) => sameDevice(d, where.ownerId_serial));
+      if (!row) throw new Error("device not found");
+      this.devices = this.devices.filter((d) => d !== row);
+      return { ...row };
     },
     deleteMany: async ({ where }: { where: { ownerId: string } }) => {
       const before = this.devices.length;

@@ -887,6 +887,19 @@ describe("devices", () => {
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
+  // the client self-heals on CONFLICT alone, so the loser of a race must not
+  // reach it as a 500
+  it("still answers CONFLICT when the row lands between the check and the write", async () => {
+    const ctx = makeContext({ sub: SUB });
+    await callerFor(ctx).devices.list(); // provisions the user
+    seedDevice(ctx, { name: "Registered on another device" });
+    ctx.fake.device.findUnique = async () => null; // the pre-read misses
+
+    await expect(
+      callerFor(ctx).devices.register({ serial: SERIAL, name: "Everyday" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
   it.each([
     ["uppercase hex", "0A1B2C3D4E5F"],
     ["too short", "0a1b2c3d4e5"],

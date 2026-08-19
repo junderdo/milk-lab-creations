@@ -15,7 +15,7 @@
   import DeviceTable from "$lib/components/device-table/DeviceTable.svelte";
   import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
   import { deviceStore } from "$lib/devices/store.svelte";
-  import { commitDisplayName } from "$lib/profile/display-name";
+  import { commitName } from "$lib/profile/name";
   import { trpc } from "$lib/trpc";
   import { NAME_MAX } from "@milklab/api/limits";
 
@@ -61,7 +61,7 @@
       cancelling = false;
       return;
     }
-    const decision = commitDisplayName(draft, me.displayName);
+    const decision = commitName(draft, me.displayName, "Your name");
     if (decision.kind === "invalid") {
       // the field stays open holding what was typed: closing it would make the
       // fix "type the whole name again", and Escape is still the way out
@@ -71,7 +71,7 @@
     editingName = false;
     if (decision.kind === "unchanged") return;
     try {
-      await trpc().users.updateDisplayName.mutate({ displayName: decision.displayName });
+      await trpc().users.updateDisplayName.mutate({ displayName: decision.name });
       error = null;
       await invalidateAll(); // the header shows this name too
     } catch {
@@ -184,7 +184,7 @@
       {error ?? ""}
     </p>
 
-    <DeviceTable {devices} userId={me.id} />
+    <DeviceTable {devices} writer={deviceStore} userId={me.id} />
 
     <section class="space-y-2 border-t border-gray-200 pt-6 dark:border-gray-800">
       <h2 class="text-sm font-semibold text-red-700 dark:text-red-400">Danger zone</h2>
