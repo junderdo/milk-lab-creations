@@ -9,9 +9,17 @@
 <script lang="ts">
   import { browser } from "$app/environment";
   import { Bluetooth, BluetoothConnected, BluetoothOff, LoaderCircle } from "@lucide/svelte";
+  import { chipView } from "$lib/ears/chip";
   import { ears } from "$lib/ears/connection.svelte";
+  import { resolveRegistration } from "$lib/devices/registration";
+  import { deviceStore } from "$lib/devices/store.svelte";
 
-  const view = $derived(ears.view);
+  // composed here rather than read off the connection: resolving a registration
+  // needs the device list, and the connection object deliberately knows nothing
+  // about tRPC or the logged-in user. Same shape as `sendEligibility`.
+  const view = $derived(
+    chipView(ears.state, resolveRegistration(ears.state, deviceStore.all)),
+  );
 
   const TONE_CLASSES = {
     unavailable: "text-gray-500 dark:text-gray-500",

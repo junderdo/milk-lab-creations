@@ -9,19 +9,20 @@
   fields on this page behave the same way and share the decision that says what
   a blur meant.
 
-  §8.3's "connected now" pill is not here yet: it has to match a row against the
-  live connection's serial, and no connection carries one until `parseCapability`
-  learns to (spec §10.1, the next card).
+  The "connected now" pill is the one live fact on the page, and it comes from
+  the connection state the client already holds — never from a GATT read. This
+  is a page where the ears are almost certainly not connected (§8.3).
 -->
 <script lang="ts">
   import ConfirmDialog from "$lib/components/confirm-dialog/ConfirmDialog.svelte";
   import {
     forgetDevice,
     renameDevice,
-    type DeviceActionDeps,
     type DeviceWriter,
+    type ForgetDeps,
+    type RenameDeps,
   } from "$lib/devices/actions";
-  import { localDismissalStorage } from "$lib/devices/dismissed";
+  import { dismissals } from "$lib/devices/dismissed.svelte";
   import type { Device } from "$lib/devices/store.svelte";
   import { calendarDate } from "$lib/format/calendar-date";
   import { commitName } from "$lib/profile/name";
@@ -34,9 +35,11 @@
     /** Where an accepted edit goes. The owner of the list owns the writes too. */
     writer: DeviceWriter;
     userId: string;
+    /** The pair connected right now, if it is one of these rows. */
+    connectedSerial: string | null;
   }
 
-  let { devices, writer, userId }: Props = $props();
+  let { devices, writer, userId, connectedSerial }: Props = $props();
 
   let editing = $state<string | null>(null);
   let draft = $state("");
@@ -47,13 +50,13 @@
   let busy = $state(false);
   let error = $state<string | null>(null);
 
-  const deps = (): DeviceActionDeps => ({
+  const deps = (): RenameDeps & ForgetDeps => ({
     api: {
       rename: (input) => trpc().devices.rename.mutate(input),
       forget: (input) => trpc().devices.forget.mutate(input),
     },
     store: writer,
-    storage: localDismissalStorage(),
+    storage: dismissals.storage,
     userId,
   });
 
@@ -160,6 +163,13 @@
                   />
                 {:else}
                   {device.name}
+                  {#if device.serial === connectedSerial}
+                    <span
+                      class="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium whitespace-nowrap text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
+                    >
+                      Connected now
+                    </span>
+                  {/if}
                 {/if}
               </td>
               <td class="py-2 pr-4 font-mono text-xs text-gray-600 dark:text-gray-400">

@@ -166,13 +166,38 @@ function concat(chunks: Uint8Array[]): Uint8Array {
   return out;
 }
 
+/**
+ * What a pair of ears was able to say about which pair it is.
+ *
+ * A union rather than `serial: string | null` because the two ways of having no
+ * serial need two different sentences (§7.3) and a nullable string discards the
+ * cause at the only place that can still see it. It also turns the safety
+ * property into a shape: **no variant has a serial field to read unless the
+ * serial is real**, so an all-zero record has nowhere to put the string
+ * `"000000000000"` — which would pass the boundary regex and register a phantom
+ * device shared by every failed unit in the fleet.
+ *
+ * `docs/spec/profile-and-devices.md` §10.1; the identity semantics themselves
+ * are owned by `docs/adr/0002-how-a-pair-of-ears-is-identified.md`.
+ */
+export type DeviceIdentity =
+  /** Six non-zero bytes, as lowercase hex. */
+  | { readonly kind: "serial"; readonly serial: string }
+  /** A record that predates the field. Fixable: the firmware is behind. */
+  | { readonly kind: "pre-serial" }
+  /** The field arrived reserved-all-zero — the eFuse read failed. Not fixable. */
+  | { readonly kind: "unidentified" };
+
 export interface Capability {
   readonly protocolVersion: number;
   readonly slotCount: number;
   readonly maxChunkBytes: number;
+  readonly identity: DeviceIdentity;
 }
 
 const CAPABILITY_BYTES = 4;
+const SERIAL_BYTES = 6;
+const CAPABILITY_WITH_SERIAL_BYTES = CAPABILITY_BYTES + SERIAL_BYTES;
 
 export function parseCapability(payload: Uint8Array): Capability | undefined {
   if (payload.length < CAPABILITY_BYTES) return undefined;
@@ -182,6 +207,26 @@ export function parseCapability(payload: Uint8Array): Capability | undefined {
     protocolVersion: view.getUint8(0),
     slotCount: view.getUint8(1),
     maxChunkBytes: view.getUint16(2),
+    identity: identityFrom(payload),
+  };
+}
+
+/**
+ * A short record is absence, not a rejection: the protocol doc's §8 rule says a
+ * client ignores trailing bytes it cannot interpret, and 5–9 bytes are exactly
+ * that. No legal firmware can emit that range now the serial's offset and width
+ * are fixed, so treating the impossible as absence costs one branch fewer than
+ * asserting against it.
+ */
+function identityFrom(payload: Uint8Array): DeviceIdentity {
+  if (payload.length < CAPABILITY_WITH_SERIAL_BYTES) return { kind: "pre-serial" };
+
+  const bytes = payload.subarray(CAPABILITY_BYTES, CAPABILITY_WITH_SERIAL_BYTES);
+  if (bytes.every((byte) => byte === 0)) return { kind: "unidentified" };
+
+  return {
+    kind: "serial",
+    serial: [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join(""),
   };
 }
 

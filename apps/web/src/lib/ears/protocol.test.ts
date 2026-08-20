@@ -11,7 +11,12 @@ import {
   versionVerdict,
 } from "./protocol";
 
-const CAPABILITY_509 = { protocolVersion: 1, slotCount: 16, maxChunkBytes: 509 };
+const CAPABILITY_509 = {
+  protocolVersion: 1,
+  slotCount: 16,
+  maxChunkBytes: 509,
+  identity: { kind: "pre-serial" },
+};
 
 function payloadOf(length: number, fill = 0xaa): Uint8Array {
   return new Uint8Array(length).fill(fill);
@@ -131,19 +136,55 @@ describe("createReassembler", () => {
 });
 
 describe("parseCapability", () => {
-  it("reads the record big-endian", () => {
-    expect(parseCapability(new Uint8Array([1, 16, 0x01, 0xfd]))).toEqual(CAPABILITY_509);
-  });
+  const HEADER = [1, 16, 0x01, 0xfd];
+  const serialBytes = [0xde, 0xad, 0xbe, 0xef, 0x00, 0x01];
 
-  it("ignores trailing bytes it does not understand", () => {
-    expect(parseCapability(new Uint8Array([1, 16, 0x01, 0xfd, 0xff, 0xff]))).toEqual(
-      CAPABILITY_509,
-    );
+  it("reads the record big-endian", () => {
+    expect(parseCapability(new Uint8Array(HEADER))).toEqual(CAPABILITY_509);
   });
 
   it("rejects a record too short to be one", () => {
     expect(parseCapability(new Uint8Array([1, 16, 0x01]))).toBeUndefined();
   });
+
+  it("reads the appended serial as lowercase hex", () => {
+    expect(parseCapability(new Uint8Array([...HEADER, ...serialBytes]))?.identity).toEqual({
+      kind: "serial",
+      serial: "deadbeef0001",
+    });
+  });
+
+  it("keeps reading a serial when the record grows again after it", () => {
+    expect(
+      parseCapability(new Uint8Array([...HEADER, ...serialBytes, 0xff, 0xff]))?.identity,
+    ).toEqual({ kind: "serial", serial: "deadbeef0001" });
+  });
+
+  // the whole point of the union: an all-zero serial hexes to "000000000000",
+  // which passes the boundary regex, so a variant that could hold it would let
+  // every failed unit in the fleet register as the same phantom device
+  it("reads an all-zero serial as unidentified, never as a string", () => {
+    const capability = parseCapability(new Uint8Array([...HEADER, 0, 0, 0, 0, 0, 0]));
+
+    expect(capability?.identity).toEqual({ kind: "unidentified" });
+    expect(JSON.stringify(capability)).not.toContain("000000000000");
+  });
+
+  // §7.3: firmware-behind is fixable and cannot-identify is not, so the two
+  // causes must stay distinguishable at the only place that can see the length
+  it("reads a four-byte record as pre-serial, not as unidentified", () => {
+    expect(parseCapability(new Uint8Array(HEADER))?.identity).toEqual({ kind: "pre-serial" });
+  });
+
+  it.each([5, 6, 7, 8, 9])(
+    "reads a %i-byte record as pre-serial rather than rejecting it",
+    (length) => {
+      const bytes = new Uint8Array(length);
+      bytes.set(HEADER);
+
+      expect(parseCapability(bytes)?.identity).toEqual({ kind: "pre-serial" });
+    },
+  );
 });
 
 describe("parseList", () => {

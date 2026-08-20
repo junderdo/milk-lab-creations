@@ -11,7 +11,7 @@
  * chip says so out loud.
  */
 
-import { chipView, type ChipView, type EarsConnectionState } from "./chip";
+import type { EarsConnectionState } from "./chip";
 import { handshake } from "./connect";
 import type { Slot } from "./protocol";
 import { createSession, type EarsSession } from "./session";
@@ -59,9 +59,6 @@ function createEarsConnection() {
   return {
     get state(): EarsConnectionState {
       return state;
-    },
-    get view(): ChipView {
-      return chipView(state);
     },
     /** The serialized request path, for everything that rides on the connection. */
     get session(): EarsSession | undefined {
