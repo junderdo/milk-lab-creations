@@ -49,12 +49,9 @@
     saving = true;
     try {
       await save(decision.name);
-      // no `open = false` here on purpose: the row lands in the store, the
-      // verdict flips to `registered`, and this component unmounts itself
     } catch {
-      // the list is unchanged, so the verdict stays true and the dialog stays
-      // open by itself — a message with Save re-enabled is the whole
-      // requirement (§10.8)
+      // nothing closes the dialog here: the list is unchanged, so the verdict
+      // stays true and it stays open by itself
       error = "Could not register those ears. Please try again.";
     } finally {
       saving = false;

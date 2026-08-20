@@ -20,7 +20,6 @@ function createDismissals() {
   const storage = localDismissalStorage();
   let version = $state(0);
 
-  /** Reads subscribe, writes bump — so anything derived from one sees the other. */
   const tracked: DismissalStorage = {
     getItem(key) {
       void version;

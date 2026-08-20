@@ -3,12 +3,13 @@
   import { resolve } from "$app/paths";
   import favicon from "$lib/assets/favicon.svg";
   import logo from "$lib/assets/milk-lab-logo.svg";
-  import { setAccessToken, trpc } from "$lib/trpc";
+  import { setAccessToken } from "$lib/trpc";
   import DeviceRegistrationDialog from "$lib/components/device-registration-dialog/DeviceRegistrationDialog.svelte";
   import EarsChip from "$lib/components/ears-chip/EarsChip.svelte";
   import ThemeToggle from "$lib/components/theme-toggle/ThemeToggle.svelte";
   import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
   import { registerDevice, type RegisterDeps } from "$lib/devices/actions";
+  import { deviceApi } from "$lib/devices/api";
   import { dismissals } from "$lib/devices/dismissed.svelte";
   import { registrationPrompt, resolveRegistration } from "$lib/devices/registration";
   import { deviceStore } from "$lib/devices/store.svelte";
@@ -40,13 +41,7 @@
     registrationPrompt(registration, dismissals.storage, data.me?.id ?? null),
   );
 
-  const registerDeps: RegisterDeps = {
-    api: {
-      register: (input) => trpc().devices.register.mutate(input),
-      list: () => trpc().devices.list.query(),
-    },
-    store: deviceStore,
-  };
+  const registerDeps: RegisterDeps = { api: deviceApi, store: deviceStore };
 </script>
 
 <svelte:head>

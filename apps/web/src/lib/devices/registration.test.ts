@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EarsConnectionState } from "$lib/ears/chip";
+import type { EarsConnectionState } from "$lib/ears/connection-state";
 import type { DeviceIdentity } from "$lib/ears/protocol";
 import { dismissalKeyFor, type DismissalStorage } from "./dismissed";
 import { registrationPrompt, resolveRegistration, type Registration } from "./registration";

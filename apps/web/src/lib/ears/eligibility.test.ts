@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EarsConnectionState } from "./chip";
+import type { EarsConnectionState } from "./connection-state";
 import { sendEligibility } from "./eligibility";
 import { buildSlots, type Capability } from "./protocol";
 

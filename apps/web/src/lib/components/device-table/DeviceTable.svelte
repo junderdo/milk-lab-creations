@@ -22,11 +22,11 @@
     type ForgetDeps,
     type RenameDeps,
   } from "$lib/devices/actions";
+  import { deviceApi } from "$lib/devices/api";
   import { dismissals } from "$lib/devices/dismissed.svelte";
   import type { Device } from "$lib/devices/store.svelte";
   import { calendarDate } from "$lib/format/calendar-date";
   import { commitName } from "$lib/profile/name";
-  import { trpc } from "$lib/trpc";
   import { NAME_MAX } from "@milklab/api/limits";
 
   interface Props {
@@ -51,10 +51,7 @@
   let error = $state<string | null>(null);
 
   const deps = (): RenameDeps & ForgetDeps => ({
-    api: {
-      rename: (input) => trpc().devices.rename.mutate(input),
-      forget: (input) => trpc().devices.forget.mutate(input),
-    },
+    api: deviceApi,
     store: writer,
     storage: dismissals.storage,
     userId,

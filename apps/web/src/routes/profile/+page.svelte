@@ -16,6 +16,7 @@
   import DeviceTable from "$lib/components/device-table/DeviceTable.svelte";
   import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
   import { registerDevice, type RegisterDeps } from "$lib/devices/actions";
+  import { deviceApi } from "$lib/devices/api";
   import { resolveRegistration } from "$lib/devices/registration";
   import { deviceStore } from "$lib/devices/store.svelte";
   import { ears } from "$lib/ears/connection.svelte";
@@ -34,17 +35,9 @@
   const devices = $derived(deviceStore.all ?? data.devices);
 
   const registration = $derived(resolveRegistration(ears.state, devices));
-  const connectedSerial = $derived(
-    registration.kind === "registered" ? registration.serial : null,
-  );
+  const connectedSerial = $derived(registration.kind === "registered" ? registration.serial : null);
 
-  const registerDeps: RegisterDeps = {
-    api: {
-      register: (input) => trpc().devices.register.mutate(input),
-      list: () => trpc().devices.list.query(),
-    },
-    store: deviceStore,
-  };
+  const registerDeps: RegisterDeps = { api: deviceApi, store: deviceStore };
 
   let editingName = $state(false);
   let draft = $state("");

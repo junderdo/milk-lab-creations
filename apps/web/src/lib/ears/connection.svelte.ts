@@ -11,7 +11,7 @@
  * chip says so out loud.
  */
 
-import type { EarsConnectionState } from "./chip";
+import type { EarsConnectionState } from "./connection-state";
 import { handshake } from "./connect";
 import type { Slot } from "./protocol";
 import { createSession, type EarsSession } from "./session";

@@ -7,21 +7,8 @@
  */
 
 import type { Registration } from "$lib/devices/registration";
-import type { Capability, Slot } from "./protocol";
-
-export type EarsConnectionState =
-  /** No `navigator.bluetooth` at all: iOS, Firefox. */
-  | { readonly status: "unsupported" }
-  | { readonly status: "disconnected"; readonly notice: string | null }
-  | { readonly status: "connecting" }
-  | {
-      readonly status: "connected";
-      /** The slot list is tagged with the device it came from, never reused across one. */
-      readonly deviceId: string;
-      readonly deviceName: string;
-      readonly capability: Capability;
-      readonly slots: readonly Slot[];
-    };
+import type { EarsConnectionState } from "./connection-state";
+import type { Slot } from "./protocol";
 
 export interface ChipView {
   readonly label: string;
@@ -50,10 +37,9 @@ export function slotSummary(slots: readonly Slot[]): string {
 }
 
 /**
- * The registration verdict arrives from outside rather than being read here:
- * resolving it needs the device list, and the connection deliberately knows
- * nothing about tRPC or the logged-in user. This is the shape
- * `sendEligibility(state, animation)` already uses.
+ * The registration verdict arrives from outside: resolving it needs the device
+ * list, and the connection deliberately knows nothing about tRPC or the
+ * logged-in user. Same shape as `sendEligibility(state, animation)`.
  */
 export function chipView(state: EarsConnectionState, registration: Registration): ChipView {
   switch (state.status) {
@@ -83,17 +69,11 @@ export function chipView(state: EarsConnectionState, registration: Registration)
         // §4's chosen name is the label; §8.5's "Unregistered" is the detail.
         // Different lines, so the two rules never compete.
         label: registration.kind === "registered" ? registration.name : state.deviceName,
-        // "Unregistered" displaces the slot summary rather than joining it: the
-        // chip is `max-w-56` with the detail clamped to two lines, so there is
-        // no third segment to be had, and the more useful sentence at that
-        // moment is the one naming something to do. It is self-limiting — it
-        // goes as soon as the user answers, either way — and the slot count
-        // stays where it is operationally needed, in the send dialog.
-        //
-        // Ears that *cannot* be registered are deliberately not labelled this
-        // way: the line is a prod toward an action, and for them there is no
-        // action (§10.5). They read as an ordinary connection, which is also
-        // what stops a failed fetch or a signed-out session from lying.
+        // "Unregistered" displaces the slot summary rather than joining it —
+        // there is no room for a third segment, and it goes as soon as the user
+        // answers. Ears that *cannot* be registered are deliberately not
+        // labelled this way: the line is a prod toward an action, and for them
+        // there is none (§10.5).
         detail:
           registration.kind === "unregistered"
             ? `Unregistered · ${PER_SESSION}`

@@ -17,6 +17,9 @@
   // composed here rather than read off the connection: resolving a registration
   // needs the device list, and the connection object deliberately knows nothing
   // about tRPC or the logged-in user. Same shape as `sendEligibility`.
+  //
+  // No `?? data.devices` fallback, unlike the routes: this component is
+  // browser-only, so it never renders in the pass where the store is unseeded.
   const view = $derived(
     chipView(ears.state, resolveRegistration(ears.state, deviceStore.all)),
   );

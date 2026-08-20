@@ -104,8 +104,6 @@ describe("registerDevice", () => {
     return { deps, added, seeded };
   }
 
-  // §10.8: the server row is pushed rather than one built here, because
-  // constructing it would mean inventing `createdAt`, which the table displays
   it("pushes the row the server created", async () => {
     const created = row(SERIAL, "Blep");
     const { deps, added } = registerHarness(async () => created);
@@ -127,12 +125,8 @@ describe("registerDevice", () => {
     expect(calls).toEqual([{ serial: SERIAL, name: "Blep" }]);
   });
 
-  /**
-   * §4 accepts a stale cache, so an already-registered serial is reachable with
-   * no bug at all: register on your phone, leave a laptop tab open, connect,
-   * press Save. An inline error would leave the dialog permanently stuck — the
-   * local list still lacks the row, so the verdict stays true.
-   */
+  // reachable with no bug at all: register on your phone, leave a laptop tab
+  // open, connect, press Save
   it("self-heals a CONFLICT by refetching, so the verdict flips and the dialog closes", async () => {
     const elsewhere = [row(SERIAL, "Named on my phone")];
     const { deps, added, seeded } = registerHarness(

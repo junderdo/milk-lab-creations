@@ -1,23 +1,16 @@
 /**
  * Whether the pair currently connected is one the user has registered — decided
- * once, for the three places that ask.
+ * once, for the chip, the modal and the profile page's register row.
  *
- * The chip (§10.5), the registration modal (§10.4) and the profile page's
- * register row (§8.5, §8.6) all need the same verdict, and §7.3's two reason
- * strings need exactly one implementation. So this is one producer and three
- * readers, in the shape `chipView` and `sendEligibility` already use: a pure
- * function returning a decided verdict, consumed by a component's `$derived`.
- *
- * **Dismissals are deliberately not an input.** Only the modal consults the
- * dismissal store, which makes "a dismissal silences the prompt, never the
- * feature" (§3.1) structural rather than remembered: the profile page *cannot*
- * hide its own register row on a dismissal, because it never sees one. The
- * second door cannot be closed by the key that closes the first.
+ * **Dismissals are deliberately not an input.** Only `registrationPrompt` below
+ * consults them, which is what makes "a dismissal silences the prompt, never
+ * the feature" structural: the profile page cannot hide its own register row on
+ * a dismissal, because it never sees one.
  *
  * `docs/spec/profile-and-devices.md` §10.3.
  */
 
-import type { EarsConnectionState } from "$lib/ears/chip";
+import type { EarsConnectionState } from "$lib/ears/connection-state";
 import type { DeviceIdentity } from "$lib/ears/protocol";
 import { isDismissed, type DismissalStorage } from "./dismissed";
 import type { Device } from "./store.svelte";
@@ -33,11 +26,9 @@ export type Registration =
 const UNKNOWN: Registration = { kind: "unknown" };
 
 /**
- * Two sentences, not one. At rollout essentially every pair in existence is
- * pre-serial, so that is the whole population for a while and "update your
- * firmware" is the only actionable thing to say. The all-zero case is two
- * register reads away from impossible, and telling that person to update
- * firmware sends them on an errand that cannot succeed (§7.3).
+ * Two sentences, not one: firmware-behind is fixable and cannot-identify is
+ * not, so collapsing them sends one of the two users on an errand that cannot
+ * succeed (§7.3).
  */
 const REASONS = {
   "pre-serial":
@@ -53,16 +44,15 @@ export function resolveRegistration(
   if (state.status !== "connected") return UNKNOWN;
 
   const { identity } = state.capability;
-  // ordered before the list check on purpose: the reason is a fact about the
-  // ears, not about the list, so it survives a fetch we could not make — and
-  // "cannot be registered" is never a false "unregistered", which is the only
-  // thing §10.6's null branch is protecting against
+  // before the list check on purpose: the reason is a fact about the ears, not
+  // about the list, so it survives a fetch we could not make. Deviates from
+  // §10.6's literal "null resolves to unknown" — see the PR description.
   if (identity.kind !== "serial") {
     return { kind: "unregisterable", reason: REASONS[identity.kind] };
   }
 
-  // null is "we could not find out" and empty is "you have registered nothing";
-  // under the first, saying "unregistered" nags someone about ears they named
+  // null is "we could not find out", empty is "you have registered nothing" —
+  // saying "unregistered" under the first nags someone about ears they named
   // months ago (§10.6)
   if (devices === null) return UNKNOWN;
 
@@ -75,24 +65,15 @@ export function resolveRegistration(
 /**
  * The pair the registration modal should be asking about, or `null`.
  *
- * **Derived, never fired** (§10.4). Nothing signals "now prompt" out of
- * `connect()` — that would make the connection depend on the logged-in user,
- * the tRPC device list and `localStorage`, the exact coupling §4 refused when
- * it kept name resolution off the connect path. Nor does an `$effect` run on
- * the connect transition: an effect fires once, at connect, and these inputs
- * need not all be ready at that instant, so it would have to sequence itself
- * against a pending fetch — a race inside the moment. A derived value becomes
- * true when its inputs agree, whenever that is.
+ * Derived, never fired (§10.4): a signal out of `connect()` would make the
+ * connection depend on the logged-in user, the device list and `localStorage`,
+ * and an `$effect` on the connect transition would fire before those inputs
+ * are necessarily ready. A derived value becomes true when they agree, whenever
+ * that is.
  *
- * The consequence is what makes closing free in every direction: Save pushes
- * the row into the store, "Not now" writes the key, a disconnect drops the
- * connected state, and each flips this to `null` on its own. Nothing ever
- * writes `open = false`, so no dialog can be left open against a connection
- * that is gone — and **a closing gesture that writes nothing cannot close the
- * dialog**, which is why Esc and the backdrop dismiss rather than merely hide.
- *
- * This is the one place a dismissal is read; `resolveRegistration` above never
- * sees one, so the profile page's register row cannot be silenced by it.
+ * The consequence is that every outcome closes the dialog by flipping this to
+ * `null`, and nothing ever writes `open = false` — which is why a gesture that
+ * writes nothing, Esc included, has to dismiss rather than merely hide.
  */
 export function registrationPrompt(
   registration: Registration,

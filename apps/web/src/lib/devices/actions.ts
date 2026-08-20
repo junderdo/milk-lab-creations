@@ -105,13 +105,16 @@ export async function registerDevice(
   store.add(created);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /**
- * Matching the code rather than the message, as `isAnimationCapError` does:
- * `register`'s only CONFLICT is an already-registered serial.
+ * Matching the code rather than the message, which would break the first time
+ * the wording changed. `register`'s only CONFLICT is an already-registered
+ * serial.
  */
 function isConflict(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  const { data } = error as { data?: unknown };
-  if (typeof data !== "object" || data === null) return false;
-  return (data as { code?: unknown }).code === "CONFLICT";
+  const data = isRecord(error) ? error.data : undefined;
+  return isRecord(data) && data.code === "CONFLICT";
 }

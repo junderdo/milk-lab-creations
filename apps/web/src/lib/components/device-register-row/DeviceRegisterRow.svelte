@@ -46,8 +46,9 @@
 </script>
 
 <!-- `registered` renders nothing: the pair is already in the table above, with
-     the "connected now" pill saying so. `unknown` is not connected, or a list
-     we could not fetch — neither is something to offer a register button for. -->
+     the "connected now" pill saying so. `unknown` renders nothing either — it
+     is either no live connection, or a list we could not fetch, and the table
+     above already says so in that second case rather than saying it twice. -->
 {#if registration.kind === "unregistered" || registration.kind === "unregisterable"}
   {@const disabled = registration.kind === "unregisterable"}
   <div class="space-y-2 rounded-md border border-gray-200 p-4 dark:border-gray-800">
