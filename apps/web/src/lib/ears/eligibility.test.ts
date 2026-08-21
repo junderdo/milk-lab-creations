@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { EarsConnectionState } from "./chip";
+import type { EarsConnectionState } from "./connection-state";
 import { sendEligibility } from "./eligibility";
 import { buildSlots, type Capability } from "./protocol";
 
-const capability: Capability = { protocolVersion: 1, slotCount: 16, maxChunkBytes: 512 };
+const capability: Capability = {
+  protocolVersion: 1,
+  slotCount: 16,
+  maxChunkBytes: 512,
+  identity: { kind: "pre-serial" },
+};
 
 const connected: EarsConnectionState = {
   status: "connected",

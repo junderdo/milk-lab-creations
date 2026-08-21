@@ -12,9 +12,14 @@
   import { AVATAR_ART } from "$lib/avatar/art";
   import { AVATAR_PRESETS, avatarOf, presetOf, type AvatarPreset } from "$lib/avatar/avatar";
   import ConfirmDialog from "$lib/components/confirm-dialog/ConfirmDialog.svelte";
+  import DeviceRegisterRow from "$lib/components/device-register-row/DeviceRegisterRow.svelte";
   import DeviceTable from "$lib/components/device-table/DeviceTable.svelte";
   import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
+  import { registerDevice, type RegisterDeps } from "$lib/devices/actions";
+  import { deviceApi } from "$lib/devices/api";
+  import { resolveRegistration } from "$lib/devices/registration";
   import { deviceStore } from "$lib/devices/store.svelte";
+  import { ears } from "$lib/ears/connection.svelte";
   import { commitName } from "$lib/profile/name";
   import { trpc } from "$lib/trpc";
   import { NAME_MAX } from "@milklab/api/limits";
@@ -24,10 +29,15 @@
   const me = $derived(data.me);
   const preset = $derived(avatarOf(me.avatar, me.id));
 
-  // the store is browser-only — module state is shared across requests on the
-  // server — so the first, server-rendered pass reads the load data directly
-  $effect.pre(() => deviceStore.seed(data.devices));
+  // seeded by the layout, which is where the list is loaded (§10.6); the
+  // server-rendered pass reads the layout's data directly, because module state
+  // is shared across requests on the server
   const devices = $derived(deviceStore.all ?? data.devices);
+
+  const registration = $derived(resolveRegistration(ears.state, devices));
+  const connectedSerial = $derived(registration.kind === "registered" ? registration.serial : null);
+
+  const registerDeps: RegisterDeps = { api: deviceApi, store: deviceStore };
 
   let editingName = $state(false);
   let draft = $state("");
@@ -184,7 +194,13 @@
       {error ?? ""}
     </p>
 
-    <DeviceTable {devices} writer={deviceStore} userId={me.id} />
+    <div class="space-y-4">
+      <DeviceTable {devices} writer={deviceStore} userId={me.id} {connectedSerial} />
+      <DeviceRegisterRow
+        {registration}
+        save={(serial, name) => registerDevice(registerDeps, serial, name)}
+      />
+    </div>
 
     <section class="space-y-2 border-t border-gray-200 pt-6 dark:border-gray-800">
       <h2 class="text-sm font-semibold text-red-700 dark:text-red-400">Danger zone</h2>

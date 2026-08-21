@@ -9,7 +9,7 @@
  */
 
 import { ROBOT_PROFILES } from "@milklab/api/limits";
-import type { EarsConnectionState } from "./chip";
+import type { EarsConnectionState } from "./connection-state";
 
 /** The only robot the store surface exists for at protocol version 1. */
 export const EARS_ROBOT_SLUG = "robo-cat-ears";

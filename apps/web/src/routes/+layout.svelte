@@ -4,9 +4,16 @@
   import favicon from "$lib/assets/favicon.svg";
   import logo from "$lib/assets/milk-lab-logo.svg";
   import { setAccessToken } from "$lib/trpc";
+  import DeviceRegistrationDialog from "$lib/components/device-registration-dialog/DeviceRegistrationDialog.svelte";
   import EarsChip from "$lib/components/ears-chip/EarsChip.svelte";
   import ThemeToggle from "$lib/components/theme-toggle/ThemeToggle.svelte";
   import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
+  import { registerDevice, type RegisterDeps } from "$lib/devices/actions";
+  import { deviceApi } from "$lib/devices/api";
+  import { dismissals } from "$lib/devices/dismissed.svelte";
+  import { registrationPrompt, resolveRegistration } from "$lib/devices/registration";
+  import { deviceStore } from "$lib/devices/store.svelte";
+  import { ears } from "$lib/ears/connection.svelte";
 
   let { data, children } = $props();
 
@@ -14,6 +21,27 @@
   $effect(() => {
     setAccessToken(data.accessToken ?? null);
   });
+
+  // the store is browser-only — module state is shared across requests on the
+  // server — so the server-rendered pass reads the load data directly
+  $effect.pre(() => deviceStore.seed(data.devices));
+  const devices = $derived(deviceStore.all ?? data.devices);
+
+  const registration = $derived(resolveRegistration(ears.state, devices));
+
+  /**
+   * Derived, never fired. This becomes true when its inputs agree, whenever
+   * that is, and every outcome flips it back on its own: Save pushes the row
+   * into the store, "Not now" writes the dismissal key, and a disconnect drops
+   * the connected state. Nothing ever writes `open = false`, so no dialog can
+   * be left open against a connection that is gone
+   * (`docs/spec/profile-and-devices.md` §10.4).
+   */
+  const prompt = $derived(
+    registrationPrompt(registration, dismissals.storage, data.me?.id ?? null),
+  );
+
+  const registerDeps: RegisterDeps = { api: deviceApi, store: deviceStore };
 </script>
 
 <svelte:head>
@@ -80,3 +108,19 @@
     {@render children()}
   </div>
 </div>
+
+<!-- mounted under `{#if}` rather than held open behind a prop: a pair swap
+     always passes through `disconnected`, because `connect()` early-returns
+     unless the status is disconnected, so conditional mounting means a new pair
+     always gets a fresh input. The correctness comes from the structure rather
+     than from keying and remembering to (§10.8). -->
+{#if prompt && data.me && ears.state.status === "connected"}
+  {@const serial = prompt.serial}
+  {@const userId = data.me.id}
+  <DeviceRegistrationDialog
+    {serial}
+    deviceName={ears.state.deviceName}
+    save={(name) => registerDevice(registerDeps, serial, name)}
+    dismiss={() => dismissals.dismiss(userId, serial)}
+  />
+{/if}
