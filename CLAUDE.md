@@ -19,10 +19,10 @@ AWS deploys use profile `milklab-dev` (us-west-2); re-auth with `aws sso login -
 How we write TypeScript here is in `docs/typescript.md` — it holds in review across `apps/api`,
 `apps/web`, and `packages/config`.
 
-Copied verbatim from another repo as a starting point and **not yet tailored to this one**. Two known
-mismatches until it is: its `## Angular` section doesn't apply (we're SvelteKit / Svelte 5), and it
-links to a `parse-dont-validate.md` that doesn't exist here — the equivalent boundary parsing lives
-in `apps/api/src/payload.ts` and the Zod schemas in `apps/api/src/router.ts`.
+It started as a copy from another repo and has since been tailored to this one: the examples are
+this project's shapes (animations, keyframes, payloads, robot profiles), the `## Svelte` section
+covers Svelte 5 runes and SvelteKit, and boundary parsing points at `apps/api/src/payload.ts` and
+the Zod schemas in `apps/api/src/router.ts` rather than an external doc.
 
 ## Issue tracking (Trello)
 

@@ -31,7 +31,11 @@ export function payloadSchemaFor(profile: RobotProfile) {
       keyframes: z.array(keyframe).min(1).max(profile.maxKeyframes),
     })
     .refine(
-      (p) => p.keyframes.every((kf, i) => i === 0 || kf.timeMs >= p.keyframes[i - 1]!.timeMs),
+      (p) =>
+        p.keyframes.every((kf, i) => {
+          const previous = p.keyframes[i - 1];
+          return previous === undefined || kf.timeMs >= previous.timeMs;
+        }),
       { message: "keyframe times must not move backwards" },
     )
     .refine((p) => new TextEncoder().encode(JSON.stringify(p)).length <= MAX_PAYLOAD_BYTES, {
@@ -43,10 +47,11 @@ export type AnimationPayload = z.infer<ReturnType<typeof payloadSchemaFor>>;
 
 /** Duration is the time of the last keyframe (times are non-decreasing). */
 export function derivedScalars(payload: AnimationPayload) {
-  const keyframes = payload.keyframes;
+  const last = payload.keyframes.at(-1);
+  // The schema requires at least one keyframe; the type doesn't say so.
+  if (last === undefined) throw new Error("animation has no keyframes");
   return {
-    durationMs: keyframes[keyframes.length - 1]!.timeMs,
-    keyframeCount: keyframes.length,
+    durationMs: last.timeMs,
+    keyframeCount: payload.keyframes.length,
   };
 }
-
