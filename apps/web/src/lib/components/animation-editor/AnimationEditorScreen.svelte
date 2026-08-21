@@ -69,7 +69,7 @@
     visibilityPrompt,
     type Visibility,
   } from "$lib/editor/visibility";
-  import { AFTER_DELETE_PATH, DELETE_FAILED_MESSAGE, deletePrompt } from "$lib/editor/deletion";
+  import DeleteAnimationButton from "$lib/components/delete-animation-button/DeleteAnimationButton.svelte";
   import { trpc } from "$lib/trpc";
 
   interface Props {
@@ -385,27 +385,11 @@
     }
   }
 
-  let pendingDelete = $state(false);
-  let deleteBusy = $state(false);
-  let deleteError = $state<string | null>(null);
+  let deleteButton: DeleteAnimationButton | undefined = $state();
 
-  async function applyDelete() {
-    const id = editor.animationId;
-    pendingDelete = false;
-    if (id === null) return;
-
-    deleteBusy = true;
-    deleteError = null;
-    try {
-      await trpc().animations.delete.mutate({ id });
-      // the row is gone, so a draft of it would only ever resurrect a ghost
-      draftWriter.discard();
-      confirmedLeave = true;
-      await goto(resolve(AFTER_DELETE_PATH));
-    } catch {
-      deleteError = DELETE_FAILED_MESSAGE;
-      deleteBusy = false;
-    }
+  function animationDeleted() {
+    draftWriter.discard();
+    confirmedLeave = true;
   }
 
   // `inert` rather than an overlay alone: each of these dialogs is a question
@@ -416,7 +400,7 @@
       editor.conflict !== null ||
       leaveTarget !== null ||
       pendingVisibility !== null ||
-      pendingDelete,
+      (deleteButton?.isOpen() ?? false),
   );
 
   const primaryButtonClasses =
@@ -610,14 +594,15 @@
               </option>
             {/each}
           </select>
-          <button
-            type="button"
-            onclick={() => (pendingDelete = true)}
-            disabled={deleteBusy || editor.saving}
-            class="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
-          >
-            {deleteBusy ? "Deleting…" : "Delete"}
-          </button>
+          {#if editor.animationId !== null}
+            <DeleteAnimationButton
+              bind:this={deleteButton}
+              id={editor.animationId}
+              name={editor.document.name}
+              disabled={editor.saving}
+              ondeleted={animationDeleted}
+            />
+          {/if}
         {/if}
         <!-- Buttons as well as shortcuts: this is the only place the stack
              is visible at all, and a pointer has no Ctrl+Z. -->
@@ -709,18 +694,6 @@
         {editor.document.description.length} / {DESCRIPTION_MAX}
       </p>
     </div>
-
-    {#if deleteError !== null}
-      <div
-        role="alert"
-        class="flex items-center justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
-      >
-        <span>{deleteError}</span>
-        <button type="button" class="underline" onclick={() => (deleteError = null)}>
-          Dismiss
-        </button>
-      </div>
-    {/if}
 
     {#if visibilityError !== null}
       <div
@@ -912,17 +885,6 @@
   >
     {prompt.body}
   </ConfirmDialog>
-{/if}
-
-{#if pendingDelete}
-  {@const prompt = deletePrompt(editor.document.name)}
-  <EditorDialog
-    title={prompt.title}
-    confirm={{ label: prompt.confirmLabel, onclick: () => void applyDelete() }}
-    dismiss={{ label: "Cancel", onclick: () => (pendingDelete = false) }}
-  >
-    {prompt.body}
-  </EditorDialog>
 {/if}
 
 {#if leaveTarget !== null}
