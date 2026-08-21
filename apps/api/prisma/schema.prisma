@@ -23,6 +23,7 @@ model User {
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz()
   animations  Animation[]
+  devices     Device[]
 
   @@map("users")
 }
@@ -60,4 +61,20 @@ model Animation {
   @@index([ownerId, createdAt]) // my-animations
   @@index([visibility, createdAt]) // gallery
   @@map("animations")
+}
+
+// The one table here without a surrogate id: the owner is half the primary key,
+// so a caller cannot name a row it does not own. Why, and why the serial is
+// bare TEXT, is in docs/adr/0002-how-a-pair-of-ears-is-identified.md.
+model Device {
+  ownerId   String   @map("owner_id") @db.Uuid
+  serial    String
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  owner User @relation(fields: [ownerId], references: [id])
+
+  @@id([ownerId, serial])
+  @@map("devices")
 }

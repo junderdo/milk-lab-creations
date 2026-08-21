@@ -9,8 +9,13 @@ import {
 } from "./animation-list.ts";
 import { AVATAR_PRESETS, presetToken } from "./avatar.ts";
 import type { Context } from "./context.ts";
-import { withOccRetry } from "./occ.ts";
-import { DESCRIPTION_MAX, MAX_ANIMATIONS_PER_USER, NAME_MAX } from "./limits.ts";
+import { hasErrorCode, UNIQUE_VIOLATION_CODES, withOccRetry } from "./occ.ts";
+import {
+  DESCRIPTION_MAX,
+  MAX_ANIMATIONS_PER_USER,
+  NAME_MAX,
+  SERIAL_HEX_CHARS,
+} from "./limits.ts";
 import {
   derivedScalars,
   packWireFormat,
@@ -28,6 +33,12 @@ export type { Visibility };
 
 const nameSchema = z.string().trim().min(1).max(NAME_MAX);
 const descriptionSchema = z.string().trim().max(DESCRIPTION_MAX);
+
+/**
+ * Lowercase hex, strictly — uppercase is a 400, never a normalization. DSQL
+ * adds CHECK constraints as NOT VALID, so this is the only gate the column has.
+ */
+const serialSchema = z.string().regex(new RegExp(`^[0-9a-f]{${SERIAL_HEX_CHARS}}$`));
 
 /**
  * "Remix of ⟨source⟩", truncated so a maxed-out source name still fits.
@@ -226,9 +237,74 @@ const usersRouter = router({
         }),
       );
     }
+    // one statement, not the batched loop above: these rows correspond to
+    // physical objects someone bought, so DSQL's 3,000-row limit is not in play
+    await withOccRetry(() => ctx.db.device.deleteMany({ where: { ownerId: ctx.dbUser.id } }));
     await withOccRetry(() => ctx.db.user.delete({ where: { id: ctx.dbUser.id } }));
     return { deleted: true };
   }),
+});
+
+/**
+ * Every device procedure is addressed by `{ serial }` and takes the owner from
+ * the session — the compound key means a caller cannot even name a row it does
+ * not own, so ownership is not a check that can be forgotten.
+ */
+/** A serial the caller has not registered is NOT_FOUND, as reads already are. */
+async function requireOwnDevice(ctx: Context, ownerId: string, serial: string) {
+  const key = { ownerId, serial };
+  if (!(await ctx.db.device.findUnique({ where: { ownerId_serial: key } }))) {
+    throw new TRPCError({ code: "NOT_FOUND" });
+  }
+  return key;
+}
+
+const devicesRouter = router({
+  list: authedProcedure.query(({ ctx }) =>
+    ctx.db.device.findMany({
+      where: { ownerId: ctx.dbUser.id },
+      // names are not unique, so registration order breaks the tie
+      orderBy: [{ name: "asc" }, { createdAt: "asc" }],
+    }),
+  ),
+
+  register: authedProcedure
+    .input(z.object({ serial: serialSchema, name: nameSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const key = { ownerId: ctx.dbUser.id, serial: input.serial };
+      // registering is naming, so a second one would silently rename the first
+      if (await ctx.db.device.findUnique({ where: { ownerId_serial: key } })) {
+        throw new TRPCError({ code: "CONFLICT", message: "already registered" });
+      }
+      try {
+        return await withOccRetry(() =>
+          ctx.db.device.create({ data: { ...key, name: input.name } }),
+        );
+      } catch (error) {
+        // the read above is an optimisation, not the gate: two concurrent
+        // registrations both pass it, and the client self-heals on CONFLICT
+        // alone, so the loser must not surface as a 500
+        if (!hasErrorCode(error, UNIQUE_VIOLATION_CODES)) throw error;
+        throw new TRPCError({ code: "CONFLICT", message: "already registered" });
+      }
+    }),
+
+  rename: authedProcedure
+    .input(z.object({ serial: serialSchema, name: nameSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const key = await requireOwnDevice(ctx, ctx.dbUser.id, input.serial);
+      return withOccRetry(() =>
+        ctx.db.device.update({ where: { ownerId_serial: key }, data: { name: input.name } }),
+      );
+    }),
+
+  forget: authedProcedure
+    .input(z.object({ serial: serialSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const key = await requireOwnDevice(ctx, ctx.dbUser.id, input.serial);
+      await withOccRetry(() => ctx.db.device.delete({ where: { ownerId_serial: key } }));
+      return { deleted: true };
+    }),
 });
 
 const robotsRouter = router({
@@ -425,6 +501,7 @@ export const appRouter = router({
     at: new Date(),
   })),
   users: usersRouter,
+  devices: devicesRouter,
   robots: robotsRouter,
   animations: animationsRouter,
 });

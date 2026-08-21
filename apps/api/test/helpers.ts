@@ -21,6 +21,14 @@ export interface RobotRow {
   createdAt: Date;
 }
 
+export interface DeviceRow {
+  ownerId: string;
+  serial: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface AnimationRow {
   id: string;
   ownerId: string;
@@ -99,10 +107,10 @@ function compareValues(a: unknown, b: unknown): number {
   return String(a).localeCompare(String(b));
 }
 
-function compareBy(orderBy: OrderBy) {
-  return (a: AnimationRow, b: AnimationRow): number => {
-    const left: Record<string, unknown> = { ...a };
-    const right: Record<string, unknown> = { ...b };
+function compareBy<Row>(orderBy: OrderBy) {
+  return (a: Row, b: Row): number => {
+    const left = a as Record<string, unknown>;
+    const right = b as Record<string, unknown>;
     for (const term of orderBy) {
       for (const [field, direction] of Object.entries(term)) {
         const cmp = compareValues(left[field], right[field]);
@@ -113,10 +121,20 @@ function compareBy(orderBy: OrderBy) {
   };
 }
 
+interface DeviceKey {
+  ownerId: string;
+  serial: string;
+}
+
+function sameDevice(row: DeviceRow, key: DeviceKey): boolean {
+  return row.ownerId === key.ownerId && row.serial === key.serial;
+}
+
 export class FakeDb {
   users: UserRow[] = [];
   robots: RobotRow[] = [ROBO_CAT_EARS];
   animations: AnimationRow[] = [];
+  devices: DeviceRow[] = [];
 
   private matching(where: AnimationWhere = {}): AnimationRow[] {
     return this.animations.filter((a) => {
@@ -196,6 +214,49 @@ export class FakeDb {
     findUnique: async ({ where }: { where: { slug?: string; id?: string } }) =>
       this.robots.find((r) => (where.slug ? r.slug === where.slug : r.id === where.id)) ?? null,
     findMany: async () => [...this.robots],
+  };
+
+  device = {
+    findUnique: async ({ where }: { where: { ownerId_serial: DeviceKey } }) =>
+      this.devices.find((d) => sameDevice(d, where.ownerId_serial)) ?? null,
+    findMany: async (args: { where: { ownerId: string }; orderBy?: OrderBy }) =>
+      this.devices
+        .filter((d) => d.ownerId === args.where.ownerId)
+        .sort(compareBy<DeviceRow>(args.orderBy ?? [{ createdAt: "asc" }]))
+        .map((d) => ({ ...d })),
+    create: async ({ data }: { data: Omit<DeviceRow, "createdAt" | "updatedAt"> }) => {
+      // the primary key is enforced here, so a router that races its own
+      // pre-read still meets the error the real driver would raise
+      if (this.devices.some((d) => sameDevice(d, data))) {
+        throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      }
+      const row: DeviceRow = { ...data, createdAt: new Date(), updatedAt: new Date() };
+      this.devices.push(row);
+      return { ...row };
+    },
+    update: async ({
+      where,
+      data,
+    }: {
+      where: { ownerId_serial: DeviceKey };
+      data: Partial<DeviceRow>;
+    }) => {
+      const row = this.devices.find((d) => sameDevice(d, where.ownerId_serial));
+      if (!row) throw new Error("device not found");
+      Object.assign(row, data, { updatedAt: new Date() });
+      return { ...row };
+    },
+    delete: async ({ where }: { where: { ownerId_serial: DeviceKey } }) => {
+      const row = this.devices.find((d) => sameDevice(d, where.ownerId_serial));
+      if (!row) throw new Error("device not found");
+      this.devices = this.devices.filter((d) => d !== row);
+      return { ...row };
+    },
+    deleteMany: async ({ where }: { where: { ownerId: string } }) => {
+      const before = this.devices.length;
+      this.devices = this.devices.filter((d) => d.ownerId !== where.ownerId);
+      return { count: before - this.devices.length };
+    },
   };
 
   readonly animation = {

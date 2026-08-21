@@ -12,8 +12,10 @@
   import { AVATAR_ART } from "$lib/avatar/art";
   import { AVATAR_PRESETS, avatarOf, presetOf, type AvatarPreset } from "$lib/avatar/avatar";
   import ConfirmDialog from "$lib/components/confirm-dialog/ConfirmDialog.svelte";
+  import DeviceTable from "$lib/components/device-table/DeviceTable.svelte";
   import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
-  import { commitDisplayName } from "$lib/profile/display-name";
+  import { deviceStore } from "$lib/devices/store.svelte";
+  import { commitName } from "$lib/profile/name";
   import { trpc } from "$lib/trpc";
   import { NAME_MAX } from "@milklab/api/limits";
 
@@ -21,6 +23,11 @@
 
   const me = $derived(data.me);
   const preset = $derived(avatarOf(me.avatar, me.id));
+
+  // the store is browser-only — module state is shared across requests on the
+  // server — so the first, server-rendered pass reads the load data directly
+  $effect.pre(() => deviceStore.seed(data.devices));
+  const devices = $derived(deviceStore.all ?? data.devices);
 
   let editingName = $state(false);
   let draft = $state("");
@@ -54,7 +61,7 @@
       cancelling = false;
       return;
     }
-    const decision = commitDisplayName(draft, me.displayName);
+    const decision = commitName(draft, me.displayName, "Your name");
     if (decision.kind === "invalid") {
       // the field stays open holding what was typed: closing it would make the
       // fix "type the whole name again", and Escape is still the way out
@@ -64,7 +71,7 @@
     editingName = false;
     if (decision.kind === "unchanged") return;
     try {
-      await trpc().users.updateDisplayName.mutate({ displayName: decision.displayName });
+      await trpc().users.updateDisplayName.mutate({ displayName: decision.name });
       error = null;
       await invalidateAll(); // the header shows this name too
     } catch {
@@ -176,6 +183,8 @@
     <p aria-live="polite" class="text-sm text-red-700 dark:text-red-400 {error ? '' : 'sr-only'}">
       {error ?? ""}
     </p>
+
+    <DeviceTable {devices} writer={deviceStore} userId={me.id} />
 
     <section class="space-y-2 border-t border-gray-200 pt-6 dark:border-gray-800">
       <h2 class="text-sm font-semibold text-red-700 dark:text-red-400">Danger zone</h2>
