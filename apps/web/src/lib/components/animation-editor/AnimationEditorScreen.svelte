@@ -69,6 +69,7 @@
     visibilityPrompt,
     type Visibility,
   } from "$lib/editor/visibility";
+  import DeleteAnimationButton from "$lib/components/delete-animation-button/DeleteAnimationButton.svelte";
   import { trpc } from "$lib/trpc";
 
   interface Props {
@@ -384,6 +385,13 @@
     }
   }
 
+  let deleteButton: DeleteAnimationButton | undefined = $state();
+
+  function animationDeleted() {
+    draftWriter.discard();
+    confirmedLeave = true;
+  }
+
   // `inert` rather than an overlay alone: each of these dialogs is a question
   // that has to be answered, and a Tab key reaching the timeline behind it would
   // let the document move while it is still open.
@@ -391,7 +399,8 @@
     draftOffer !== null ||
       editor.conflict !== null ||
       leaveTarget !== null ||
-      pendingVisibility !== null,
+      pendingVisibility !== null ||
+      (deleteButton?.isOpen() ?? false),
   );
 
   const primaryButtonClasses =
@@ -585,6 +594,15 @@
               </option>
             {/each}
           </select>
+          {#if editor.animationId !== null}
+            <DeleteAnimationButton
+              bind:this={deleteButton}
+              id={editor.animationId}
+              name={editor.document.name}
+              disabled={editor.saving}
+              ondeleted={animationDeleted}
+            />
+          {/if}
         {/if}
         <!-- Buttons as well as shortcuts: this is the only place the stack
              is visible at all, and a pointer has no Ctrl+Z. -->

@@ -14,6 +14,7 @@
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
   import EarsSendDialog from "$lib/components/ears-send-dialog/EarsSendDialog.svelte";
+  import DeleteAnimationButton from "$lib/components/delete-animation-button/DeleteAnimationButton.svelte";
   import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
   import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
 
@@ -51,6 +52,8 @@
 
   let remixing = $state(false);
   let remixError: string | null = $state(null);
+
+  const isOwner = $derived(data.me?.id === animation.ownerId);
 
   const atCap = $derived(data.quota !== null && atAnimationCap(data.quota.count));
 
@@ -129,7 +132,8 @@
               Send to my ears
             </button>
           {/if}
-          {#if data.me?.id === animation.ownerId}
+          {#if isOwner}
+            <DeleteAnimationButton id={animation.id} name={animation.name} />
             <!-- the way into the editor; non-owners get Remix instead -->
             <a
               href={resolve("/animations/[id]/edit", { id: animation.id })}
