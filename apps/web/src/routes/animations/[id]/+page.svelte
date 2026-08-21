@@ -5,6 +5,7 @@
   import { resolve } from "$app/paths";
   import { keyframesFromPayload } from "$lib/animation/payload";
   import { modelUrlFor } from "$lib/animation/robots";
+  import { AFTER_DELETE_PATH, DELETE_FAILED_MESSAGE, deletePrompt } from "$lib/editor/deletion";
   import { limitsFor } from "$lib/editor/document";
   import { ANIMATION_CAP_MESSAGE, atAnimationCap, isAnimationCapError } from "$lib/quota";
   import { trpc } from "$lib/trpc";
@@ -14,6 +15,7 @@
   import AnimationSparkline from "$lib/components/animation-sparkline/AnimationSparkline.svelte";
   import type AnimationViewer from "$lib/components/animation-viewer/AnimationViewer.svelte";
   import EarsSendDialog from "$lib/components/ears-send-dialog/EarsSendDialog.svelte";
+  import EditorDialog from "$lib/components/animation-editor/EditorDialog.svelte";
   import RemixAttribution from "$lib/components/remix-attribution/RemixAttribution.svelte";
   import UserAvatar from "$lib/components/user-avatar/UserAvatar.svelte";
 
@@ -51,6 +53,25 @@
 
   let remixing = $state(false);
   let remixError: string | null = $state(null);
+
+  const isOwner = $derived(data.me?.id === animation.ownerId);
+
+  let pendingDelete = $state(false);
+  let deleting = $state(false);
+  let deleteError: string | null = $state(null);
+
+  async function applyDelete() {
+    pendingDelete = false;
+    deleting = true;
+    deleteError = null;
+    try {
+      await trpc().animations.delete.mutate({ id: animation.id });
+      await goto(resolve(AFTER_DELETE_PATH));
+    } catch {
+      deleteError = DELETE_FAILED_MESSAGE;
+      deleting = false;
+    }
+  }
 
   const atCap = $derived(data.quota !== null && atAnimationCap(data.quota.count));
 
@@ -129,7 +150,15 @@
               Send to my ears
             </button>
           {/if}
-          {#if data.me?.id === animation.ownerId}
+          {#if isOwner}
+            <button
+              type="button"
+              onclick={() => (pendingDelete = true)}
+              disabled={deleting}
+              class="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
             <!-- the way into the editor; non-owners get Remix instead -->
             <a
               href={resolve("/animations/[id]/edit", { id: animation.id })}
@@ -168,6 +197,9 @@
         <!-- why the send button is disabled, as page text: a tooltip never
              opens on a touch device, and a missing button is a mystery -->
         <p class="text-sm text-gray-600 dark:text-gray-400">{sendVerdict.reason}</p>
+      {/if}
+      {#if deleteError}
+        <p class="text-sm text-red-600 dark:text-red-400" role="alert">{deleteError}</p>
       {/if}
       {#if remixError}
         <p class="text-sm text-red-600 dark:text-red-400" role="alert">{remixError}</p>
@@ -223,4 +255,15 @@
     initialSlots={sendTarget.slots}
     onclose={() => (sendTarget = null)}
   />
+{/if}
+
+{#if pendingDelete}
+  {@const prompt = deletePrompt(animation.name)}
+  <EditorDialog
+    title={prompt.title}
+    confirm={{ label: prompt.confirmLabel, onclick: () => void applyDelete() }}
+    dismiss={{ label: "Cancel", onclick: () => (pendingDelete = false) }}
+  >
+    {prompt.body}
+  </EditorDialog>
 {/if}
