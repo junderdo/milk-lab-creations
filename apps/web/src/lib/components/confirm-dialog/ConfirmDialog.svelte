@@ -7,6 +7,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { portal } from "$lib/actions/portal";
 
   interface Choice {
     label: string;
@@ -24,7 +25,10 @@
   const titleId = $props.id();
 </script>
 
+<!-- on body, not in place: a host that goes `inert` while asking must not
+     silence the question itself -->
 <div
+  use:portal
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
   role="dialog"
   aria-modal="true"
