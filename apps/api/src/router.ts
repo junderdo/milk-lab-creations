@@ -84,6 +84,25 @@ function validatePayload(robotSlug: string, payload: unknown): AnimationPayload 
   return result.data;
 }
 
+/**
+ * A payload read back from the database, parsed rather than asserted.
+ *
+ * It was validated on the way in, so a failure here is our bug — a dangling
+ * robot profile, a migration that wrote a shape we no longer accept — not the
+ * caller's, and INTERNAL_SERVER_ERROR says so.
+ */
+function parseStoredPayload(robotSlug: string, payload: unknown): AnimationPayload {
+  const profile = ROBOT_PROFILES[robotSlug];
+  if (profile) {
+    const result = payloadSchemaFor(profile).safeParse(payload);
+    if (result.success) return result.data;
+  }
+  throw new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: `stored payload is not valid for robot "${robotSlug}"`,
+  });
+}
+
 const ownerRobotSelect = {
   // the avatar renders wherever displayName does, so it is public data
   owner: { select: { id: true, displayName: true, avatar: true } },
@@ -344,7 +363,7 @@ const animationsRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const animation = await getVisibleAnimation(ctx, input.id);
-      const payload = animation.payload as unknown as AnimationPayload;
+      const payload = parseStoredPayload(animation.robot.slug, animation.payload);
       return {
         wireBase64: Buffer.from(packWireFormat(payload)).toString("base64"),
       };
@@ -394,7 +413,7 @@ const animationsRouter = router({
       const source = await getVisibleAnimation(ctx, input.id);
       await assertUnderAnimationCap(ctx, ctx.dbUser.id);
 
-      const payload = source.payload as unknown as AnimationPayload;
+      const payload = parseStoredPayload(source.robot.slug, source.payload);
       return withOccRetry(() =>
         ctx.db.animation.create({
           data: {
