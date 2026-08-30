@@ -31,3 +31,30 @@
   color-scheme: dark;
   background-color: var(--color-gray-950);
 }
+
+/*
+ * The width every page's content shares with the header above it, so the
+ * column and the nav always line up.
+ *
+ * It widens in steps rather than sitting at one measure: the content here is
+ * lists of rows and a robot preview, which have room to spend, but a wide
+ * desktop shouldn't get an unbroken 2560px line either. The last step tops out
+ * at 90rem.
+ */
+@utility page-width {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 48rem;
+
+  @media (width >= 64rem) {
+    max-width: 64rem;
+  }
+
+  @media (width >= 80rem) {
+    max-width: 76rem;
+  }
+
+  @media (width >= 96rem) {
+    max-width: 90rem;
+  }
+}

@@ -124,7 +124,7 @@
 </script>
 
 <main class="px-4 py-10">
-  <div class="mx-auto max-w-3xl space-y-10">
+  <div class="page-width space-y-10">
     <!-- one block: the tray belongs to the badge that opened it, and the page's
          other sections are a stack below it, not beside -->
     <div class="space-y-3">
