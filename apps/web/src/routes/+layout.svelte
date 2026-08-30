@@ -60,18 +60,24 @@
   class="flex min-h-dvh flex-col bg-white editor-shell:has-[[data-editor-shell]]:h-dvh editor-shell:has-[[data-editor-shell]]:overflow-hidden dark:bg-gray-950"
 >
   <header class="shrink-0 border-b border-gray-200 dark:border-gray-800">
-    <nav class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+    <!-- the two groups wrap as wholes when the bar runs out of room; the links
+         inside them never do -->
+    <nav class="page-width flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
       <div class="flex items-center gap-6">
         <a href={resolve("/")}>
           <!-- The logo is black line art on transparent, so dark mode inverts it
                rather than shipping a second file. -->
           <img src={logo} alt="Milk Lab Creations" class="h-12 w-auto dark:invert" />
         </a>
-        <a href={resolve("/")} class="text-sm text-gray-600 hover:underline dark:text-gray-400"
+        <a
+          href={resolve("/")}
+          class="text-sm whitespace-nowrap text-gray-600 hover:underline dark:text-gray-400"
           >Gallery</a
         >
         {#if data.me}
-          <a href={resolve("/my")} class="text-sm text-gray-600 hover:underline dark:text-gray-400"
+          <a
+            href={resolve("/my")}
+            class="text-sm whitespace-nowrap text-gray-600 hover:underline dark:text-gray-400"
             >My animations</a
           >
         {/if}
@@ -82,13 +88,16 @@
         {#if data.me}
           <a
             href={resolve("/profile")}
-            class="flex items-center gap-2 text-sm text-gray-600 hover:underline dark:text-gray-400"
+            class="flex min-w-0 items-center gap-2 text-sm text-gray-600 hover:underline dark:text-gray-400"
           >
             <UserAvatar userId={data.me.id} avatar={data.me.avatar} />
-            {data.me.displayName}
+            <!-- one line always: a name too long for the header is cut, not
+                 wrapped, so the bar keeps its height -->
+            <span class="truncate">{data.me.displayName}</span>
           </a>
-          <form method="POST" action="/auth/logout">
-            <button class="text-sm text-gray-600 hover:underline dark:text-gray-400"
+          <form method="POST" action="/auth/logout" class="shrink-0">
+            <button
+              class="text-sm whitespace-nowrap text-gray-600 hover:underline dark:text-gray-400"
               >Sign out</button
             >
           </form>

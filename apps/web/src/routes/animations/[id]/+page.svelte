@@ -114,7 +114,7 @@
 </script>
 
 <main class="px-4 py-10">
-  <div class="mx-auto max-w-3xl space-y-6">
+  <div class="page-width space-y-6">
     <header class="space-y-1">
       <div class="flex items-start justify-between gap-4">
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{animation.name}</h1>
