@@ -35,6 +35,7 @@ export default $config({
 
     const userPool = new sst.aws.CognitoUserPool("UserPool", {
       domain: { prefix: `milklab-${$app.stage}` },
+      triggers: { preSignUp: "apps/api/src/pre-sign-up.handler" },
     });
 
     const google = userPool.addIdentityProvider("Google", {
@@ -44,7 +45,12 @@ export default $config({
         client_id: googleClientId.value,
         client_secret: googleClientSecret.value,
       },
-      attributes: { email: "email", name: "name", username: "sub" },
+      attributes: {
+        email: "email",
+        email_verified: "email_verified",
+        name: "name",
+        username: "sub",
+      },
     });
 
     const prodWebOrigin = "https://milklabcreations.com";
