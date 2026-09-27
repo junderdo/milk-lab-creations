@@ -1,9 +1,13 @@
 name: CI
 
+# a change touching only docs markdown runs nothing; the wire-format fixture
+# under docs/ is test input, so it still does
 on:
   push:
     branches: [main]
+    paths-ignore: ["docs/**/*.md"]
   pull_request:
+    paths-ignore: ["docs/**/*.md"]
 
 permissions:
   contents: read
